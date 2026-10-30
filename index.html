@@ -184,7 +184,7 @@ details summary{cursor:pointer;color:var(--gold);font-weight:600;font-size:13px}
         <select id="mes" class="sel" aria-label="Mes de dotación"></select>
         <div class="chips" id="turnos" role="group" aria-label="Turno"></div>
       </div>
-      <div class="search"><input id="q" list="names" placeholder="Buscar persona…" aria-label="Buscar persona" autocomplete="off"><datalist id="names"></datalist></div>
+      <button class="btn" id="adm" type="button">Admin</button><div class="search"><input id="q" list="names" placeholder="Buscar persona…" aria-label="Buscar persona" autocomplete="off"><datalist id="names"></datalist></div>
     </div>
     <nav class="tabs" id="tabs" aria-label="Secciones"></nav>
   </div>
@@ -375,7 +375,7 @@ const fobjTxt=f=>{const d=new Date(f+'T12:00:00');const v=d<new Date();return `O
 const TURNOS=['Todos','Mañana','Tarde','Noche','Intermedio'];
 const VIEWS=[['resumen','Resumen'],['dotacion','Dotación'],['tempos','Tempos'],['movimientos','Movimientos'],['matriz','Matriz'],['tareas','Capacidad por tarea'],['skap','SKAP'],['plan','Plan de acción'],['revision','Revisión']];
 const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',plSec:'Todos',plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
-S.admin=true;
+S.admin=!!window.IS_ADMIN;
 try{const v=localStorage.getItem('mx_turno');if(v&&TURNOS.includes(v))S.t=v}catch(e){}
 
 const P=DATA.people; const byL=Object.fromEntries(P.map(p=>[p.l,p]));
@@ -396,7 +396,7 @@ DATA.ae.forEach(a=>{const p=byL[a.l];if(p)a.n=p.n});
   DATA.matriz.forEach(r=>{const p=r.l&&byL[r.l];if(!p)return;if(norm(r.n)!==norm(p.n))FIX.names++;r.orig=r.n;r.n=p.n;r.t=p.t});})();
 const skByL=Object.fromEntries(DATA.skap.map(s=>[s.l,s])); const aeByL=Object.fromEntries(DATA.ae.map(a=>[a.l,a]));
 const mxByL={}; DATA.matriz.forEach(r=>{if(r.l)(mxByL[r.l]=mxByL[r.l]||[]).push(r)});
-// Ajustes manuales: se editan desde la página y quedan guardados en este navegador
+// Ajustes manuales: los edita el administrador y se publican junto con los datos
 const AJ_DEF=[
   {l:'29030846',k:'traslado',area:'Expedición',d:'Sigue efectiva.'},
   {l:'29035113',k:'traslado',area:'Distribución',d:'Sigue efectiva.'},
@@ -406,9 +406,8 @@ const AJ_DEF=[
 ];
 const AJT={traslado:'Cambio de sector',efect:'Efectivizado',activo:'Sigue en nómina',baja:'Baja confirmada',nota:'Nota'};
 const ajText=a=>a.k==='traslado'?`Pasó a ${a.area||'otra área'}.${a.d?' '+a.d:''}`:(a.d||'');
-let AJ=AJ_DEF.map(a=>({...a}));
-try{const v=JSON.parse(localStorage.getItem('mx_ajustes')||'null');if(Array.isArray(v))AJ=v}catch(e){}
-function saveAJ(){try{localStorage.setItem('mx_ajustes',JSON.stringify(AJ))}catch(e){}}
+let AJ=(window.SRC_AJ||AJ_DEF).map(a=>({...a}));
+function saveAJ(){window.onAjChange&&window.onAjChange(AJ);if(window.SRC_INFO)window.SRC_INFO.pendiente=true;setEstado()}
 let AJL={},EV=[];
 function applyAJ(){
   AJL=Object.fromEntries(AJ.map(a=>[a.l,a]));
@@ -430,7 +429,7 @@ function snap(i){const r={EA:0,TA:0,TS:0,turno:{}};for(const p of P){const c=st(
 const $=s=>document.querySelector(s);
 function shell(){
   $('#mes').innerHTML=DATA.months.map((m,i)=>`<option value="${i}">${mlong(i)}</option>`).reverse().join('');
-  $('#mes').value=S.m; {const c=DATA.meta&&DATA.meta.cargado?new Date(DATA.meta.cargado):null;$('#estado-t').innerHTML=`Dotación hasta <strong>${DATA.months.length?mlong(DATA.months.length-1):'—'}</strong>${c?` · archivos cargados el ${c.toLocaleDateString('es-AR')} a las ${c.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}`:''}`;$('#cargar').textContent='Actualizar archivos';$('#cargar').classList.remove('solid')}
+  $('#mes').value=S.m; setEstado();$('#adm').onclick=()=>S.admin?salirAdmin():openAdmin();$('#adm').textContent=S.admin?'Salir de admin':'Admin';$('#adm').classList.toggle('solid',S.admin);
   $('#mes').onchange=e=>{S.m=+e.target.value;render()};
   $('#turnos').innerHTML=TURNOS.map(t=>`<button class="chip" data-t="${t}" aria-pressed="${S.t===t}">${t}</button>`).join('');
   $('#turnos').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;S.t=b.dataset.t;try{localStorage.setItem('mx_turno',S.t)}catch(_){};document.querySelectorAll('#turnos .chip').forEach(c=>c.setAttribute('aria-pressed',c.dataset.t===S.t));render()};
@@ -442,11 +441,11 @@ function shell(){
   window.addEventListener('hashchange',route);
   document.addEventListener('click',e=>{const g=e.target.closest('[data-goplan]');if(g){S.plP=g.dataset.goplan;S.plSec='Todos';S.plH=null;S.plE='NOK';$('#ficha-root').innerHTML='';if(location.hash==='#plan')render();else location.hash='plan';return}const a=e.target.closest('[data-aj]');if(a){openAJ(a.dataset.aj);return}const f=e.target.closest('[data-f]');if(f){openFicha(f.dataset.f)}});
 }
+function setEstado(){const I=window.SRC_INFO||{};const f=d=>{const c=new Date(d);return `${c.toLocaleDateString('es-AR')} ${c.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}`};
+  $('#estado-t').innerHTML=`Dotación hasta <strong>${DATA.months.length?mlong(DATA.months.length-1):'—'}</strong>${I.publicado?` · publicado el ${f(I.publicado)}`:''}${S.admin&&I.pendiente?' · <span class="pill p-warn">Cambios sin publicar</span>':''}`;
+  const c=$('#cargar');c.hidden=!S.admin;c.textContent='Actualizar archivos';c.classList.remove('solid');
+  let pb=$('#publicar');if(S.admin&&!pb){pb=document.createElement('button');pb.id='publicar';pb.type='button';pb.className='btn solid';pb.textContent='Publicar';pb.onclick=()=>openPublicar();c.after(pb)}if(pb)pb.hidden=!S.admin;if(pb)pb.classList.toggle('solid',!!I.pendiente||!I.publicado)}
 function renderTabs(){$('#tabs').innerHTML=VIEWS.filter(v=>v[0]!=='revision'||S.admin).map(([id,n],k)=>`<a class="tab" href="#${id}" data-v="${id}"><b>${id==='revision'?'✎':String(k+1).padStart(2,'0')}</b>${n}</a>`).join('')}
-function setAdmin(v){S.admin=v;try{localStorage.setItem('mx_admin',v?'1':'0')}catch(e){};renderTabs();if(!v&&S.view==='revision')location.hash='resumen';else render();toast(v?'Modo administrador activado.':'Saliste del modo administrador.')}
-function openAdmin(){const root=$('#ficha-root');root.innerHTML=`<div class="scrim" id="scrim"></div><aside class="ficha" role="dialog" aria-modal="true" aria-label="Modo administrador"><button class="close" id="xf">Cancelar</button><div><p class="sec-t" style="margin:0">Modo administrador</p><h2>Ingresar</h2></div><form id="admf" class="ajform"><label for="admk">Clave</label><input id="admk" class="sel" type="password" autocomplete="off" required><p class="muted" style="margin:0;font-size:13px">En la vista previa la clave es <b>1234</b>. En la versión final la elegís vos.</p><div class="row"><button class="btn solid" type="submit">Entrar</button></div></form></aside>`;
-  const close=()=>{root.innerHTML=''};$('#scrim').onclick=close;$('#xf').onclick=close;$('#admk').focus();
-  $('#admf').onsubmit=e=>{e.preventDefault();if($('#admk').value==='1234'){close();setAdmin(true);if(location.hash==='#revision')route();else location.hash='revision'}else{toast('Clave incorrecta.')}}}
 function route(){const h=location.hash.replace('#','');S.view=VIEWS.some(v=>v[0]===h)&&(h!=='revision'||S.admin)?h:'resumen';render()}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200)}
 function render(){
@@ -573,21 +572,21 @@ function vRevision(){
   const ren=DATA.matriz.filter(m=>m.orig&&norm(m.orig)!==norm(m.n));
   const tbl=(cols,rows)=>`<div class="tblwrap" style="max-height:360px"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${cols.length}" class="empty">Nada para revisar.</td></tr>`}</tbody></table></div>`;
   return head('Revisión','Lo que hay que completar en los Excel, lo que la página corrigió sola, los ajustes manuales y la configuración.')+
-  `<div class="kpis">${kpi('Sin cargar en la Matriz',inSinMx.length,'personas adentro','hero')}${kpi('Tempos 6+ meses afuera',largos.length,'suspendidos hace 6 meses o más')}${kpi('Ajustes manuales',AJ.length,'cargados en este navegador')}${kpi('Corregido solo',FIX.names+FIX.dup,'nombres y duplicados')}</div>
+  `<div class="kpis">${kpi('Sin cargar en la Matriz',inSinMx.length,'personas adentro','hero')}${kpi('Tempos 6+ meses afuera',largos.length,'suspendidos hace 6 meses o más')}${kpi('Ajustes manuales',AJ.length,'se publican con los datos')}${kpi('Corregido solo',FIX.names+FIX.dup,'nombres y duplicados')}</div>
   <div class="grid2 even"><div class="card"><h3>Adentro sin cargar en la Matriz <small>${inSinMx.length}</small></h3>
   ${tbl(['Apellido y nombre','Legajo','Turno','Tipo','Tarea'],inSinMx.map(p=>`<tr class="click" data-f="${p.l}"><td>${esc(p.n)}</td><td class="num muted">${p.l}</td><td>${esc(p.t)}</td><td>${st(p,S.m)[0]==='E'?'Efectivo':'Tempo'}</td><td class="muted">${esc(p.ta)}</td></tr>`))}</div>
   <div class="card"><h3>Tempos con 6+ meses afuera <small>${largos.length}</small></h3>
   ${tbl(['Apellido y nombre','Turno','Racha','Meses adentro'],largos.map(p=>{const ra=racha(p,S.m);return `<tr class="click" data-f="${p.l}"><td>${esc(p.n)}</td><td>${esc(p.t)}</td><td><span class="pill ${ra>=13?'p-bad':'p-warn'}">${ra} meses</span></td><td class="num">${p.h.slice(0,S.m+1).filter(x=>x==='TA').length}</td></tr>`}))}</div></div>
   <div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Ajustes manuales <small>${AJ.length} · corrigen lo que el archivo de dotación no muestra</small></h3><span class="spacer"></span><button class="btn solid" data-aj="">+ Agregar ajuste</button></div>
   ${AJ.map(a=>{const p=byL[a.l];return p?`<div class="nok row"><button class="linkish" data-f="${a.l}">${esc(p.n)}</button><span class="pill p-info">${AJT[a.k]}</span><span class="muted" style="flex:1;min-width:160px">${esc(ajText(a))}</span><button class="btn" data-aj="${a.l}">Editar</button></div>`:''}).join('')||'<p class="muted">No hay ajustes cargados.</p>'}
-  <div class="row" style="margin-top:10px"><button class="btn" id="copyAJ">Copiar para Excel</button><span class="muted" style="font-size:12px">Los ajustes quedan guardados en este navegador. Con “Copiar para Excel” los pegás en una hoja “Ajustes” como respaldo.</span></div></div>
+  <div class="row" style="margin-top:10px"><button class="btn" id="copyAJ">Copiar para Excel</button><span class="muted" style="font-size:12px">Los ajustes se publican junto con los datos: los supervisores los ven cuando tocás Publicar. Con “Copiar para Excel” los pegás en una hoja “Ajustes” como respaldo.</span></div></div>
   <div class="card" style="margin-top:12px"><h3>Corregido automáticamente <small>no hace falta tocar nada</small></h3>
   <details><summary>${ren.length} nombres unificados con la dotación</summary>${tbl(['En la Matriz','Nombre oficial (dotación)'],ren.map(m=>`<tr class="click" data-f="${m.l}"><td class="muted">${esc(m.orig)}</td><td>${esc(m.n)}</td></tr>`))}</details>
   <p class="muted" style="margin:10px 0 0">${FIX.dup} ${FIX.dup===1?'persona cargada dos veces quedó':'personas cargadas dos veces quedaron'} en una sola fila${FIX.dupN.length?` (${FIX.dupN.map(esc).join(", ")})`:""}. ${mxFuera.length} personas de la Matriz que ya no están adentro se ocultan.</p></div>
   <div class="grid2 even" style="margin-top:12px"><div class="card"><h3>Plan de acción</h3><form id="cfgf" class="ajform"><label for="cfg_fobj">Fecha objetivo para los entrenamientos NOK</label><input id="cfg_fobj" type="date" class="sel" value="${esc(CFG.fobj||'')}"><div class="row"><button class="btn solid" type="submit">Guardar fecha</button><span class="muted" style="font-size:12px">En tu Power BI estaba fija en 21/09/2026.</span></div></form></div>
   <div class="card"><h3>Última carga</h3>${(DATA.meta.warn||[]).length?`<div class="alerts">${DATA.meta.warn.map(w=>`<div class="alert"><span class="dot" style="background:var(--warn)"></span><span class="muted">${esc(w)}</span></div>`).join('')}</div>`:'<p class="muted">Todos los archivos se leyeron sin problemas.</p>'}
   <p class="muted" style="font-size:13px">Dotación: ${DATA.months.length} meses · Matriz: ${DATA.matriz.length} personas · SKAP: ${DATA.skap.length} · Plan de acción: ${DATA.ae.length}</p>
-  <button class="btn" id="borrar" type="button" style="border-color:var(--bad);color:var(--bad)">Borrar los datos de este navegador</button></div></div></div>`;
+  ${window.SRC_INFO&&window.SRC_INFO.pendiente?'<button class="btn" id="borrar" type="button" style="border-color:var(--bad);color:var(--bad)">Descartar cambios sin publicar</button>':''}</div></div></div>`;
 }
 function vMatriz(){
   const rows=mxRows().map(r=>({...r,ok:r.s.filter(x=>x===0).length,fa:r.s.filter(x=>x===1).length,na:r.s.filter(x=>x===2).length}));
@@ -665,8 +664,8 @@ function bindView(){
   const oi=document.getElementById('onlyIn');if(oi)oi.onchange=e=>{S.onlyIn=e.target.checked;render()};
   document.querySelectorAll('[data-task]').forEach(b=>b.onclick=()=>{const k=+b.dataset.task;S.task=S.task===k?null:k;render()});
   const cp=document.getElementById('copyAJ');if(cp)cp.onclick=()=>{const tsv=['Legajo\tApellido y nombre\tTipo\tÁrea\tTarea/Sector\tDetalle',...AJ.map(a=>[a.l,(byL[a.l]||{}).n||'',AJT[a.k],a.area||'',a.ta||'',a.d||''].join('\t'))].join('\n');navigator.clipboard.writeText(tsv).then(()=>toast('Copiado. Pegalo en una hoja “Ajustes” de tu Excel.')).catch(()=>toast('No se pudo copiar desde este navegador.'))};
-  const cf=document.getElementById('cfgf');if(cf)cf.onsubmit=e=>{e.preventDefault();CFG.fobj=$('#cfg_fobj').value;guardar('mx_cfg',CFG);location.reload()};
-  const bo=document.getElementById('borrar');if(bo)bo.onclick=()=>{if(bo.dataset.ok){try{localStorage.removeItem('mx_raw')}catch(_){}location.reload()}else{bo.dataset.ok='1';bo.textContent='Tocá de nuevo para confirmar'}};
+  const cf=document.getElementById('cfgf');if(cf)cf.onsubmit=e=>{e.preventDefault();window.onCfgChange({fobj:$('#cfg_fobj').value})};
+  const bo=document.getElementById('borrar');if(bo)bo.onclick=()=>{if(bo.dataset.ok){try{localStorage.removeItem('mx_work')}catch(_){}location.reload()}else{bo.dataset.ok='1';bo.textContent='Tocá de nuevo para confirmar'}};
   const ct=document.getElementById('clrTask');if(ct)ct.onclick=()=>{S.task=null;render()};
 }
 
@@ -725,31 +724,92 @@ function openAJ(l){
 }
 shell();route();
 }
+/* ===== Almacenamiento local ===== */
 function guardar(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
 function leer(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
-const CFG=Object.assign({fobj:'2026-09-21'},leer('mx_cfg')||{});
-let RAW=leer('mx_raw')||window.PRELOAD_RAW||null,BOOTED=false;
+function borrar(k){try{localStorage.removeItem(k)}catch(e){}}
 const q$=s=>document.querySelector(s);
 const escH=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function aviso(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3600)}
+function aviso(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),4200)}
+
+/* ===== Cifrado (AES-GCM con clave derivada de la contraseña) ===== */
+const enc=new TextEncoder(),dec=new TextDecoder();
+const b64=u8=>{let s='';for(let i=0;i<u8.length;i+=32768)s+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(s)};
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function gz(u8,mode){const s=new Blob([u8]).stream().pipeThrough(mode==='c'?new CompressionStream('gzip'):new DecompressionStream('gzip'));return new Uint8Array(await new Response(s).arrayBuffer())}
+async function claveDe(pass,salt){const k=await crypto.subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+async function cifrar(obj,pass){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));const data=await gz(enc.encode(JSON.stringify(obj)),'c');const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await claveDe(pass,salt),data));return {v:1,s:b64(salt),i:b64(iv),d:b64(ct)}}
+async function descifrar(env,pass){const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(env.i)},await claveDe(pass,unb64(env.s)),unb64(env.d));return JSON.parse(dec.decode(await gz(new Uint8Array(pt),'d')))}
+async function hashAdmin(pass,salt){const h=await crypto.subtle.digest('SHA-256',enc.encode(salt+'|'+pass));return b64(new Uint8Array(h))}
+
+/* ===== Estado ===== */
+// PUB: lo publicado (lo ven todos). WORK: copia de trabajo del administrador (cambios sin publicar).
+let PUB=null,ENV=null,WORK=leer('mx_work'),IS_ADMIN=false,BOOTED=false;
+const CFG={fobj:'2026-09-21'};
+const REPO=(()=>{const h=location.hostname,m=h.match(/^([^.]+)\.github\.io$/i);const seg=location.pathname.split('/').filter(Boolean)[0];return m&&seg?{owner:m[1],repo:seg}:null})();
+function fuente(){ // qué datos mostrar
+  if(IS_ADMIN&&WORK&&WORK.raw)return WORK;
+  if(PUB)return PUB;
+  if(IS_ADMIN&&WORK)return WORK;
+  return null;
+}
+function arrancar(){
+  const src=fuente();
+  if(!src||!src.raw||!src.raw.dot||!src.raw.dot.length){IS_ADMIN?welcome():(ENV?lockScreen():sinPublicar());return}
+  Object.assign(CFG,src.cfg||{});window.SRC_AJ=src.aj||null;window.IS_ADMIN=IS_ADMIN;window.SRC_INFO={publicado:PUB&&PUB.publicado,pendiente:!!(IS_ADMIN&&WORK&&WORK.dirty)};
+  BOOTED=true;boot(buildData(src.raw,CFG));
+}
+function setWork(cambios){
+  WORK=Object.assign({},WORK||{raw:PUB&&PUB.raw,aj:PUB&&PUB.aj,cfg:PUB&&PUB.cfg},cambios,{dirty:true});
+  if(!guardar('mx_work',WORK))aviso('Este navegador no deja guardar los cambios. Publicalos antes de cerrar.');
+}
+window.onAjChange=aj=>{setWork({aj});};
+window.onCfgChange=cfg=>{setWork({cfg:Object.assign({},CFG,cfg)});location.reload()};
+
+/* ===== Pantallas sin tablero ===== */
 const ARCHIVOS=[['Carpeta Dotacion_Warehouse','Un Excel por mes, en las carpetas de cada año'],['Antiguedad.xlsx','Fecha de ingreso y edad'],['Matriz por Tareas.xlsx','Hoja Hechos_Capacitacion'],['Carpeta Skap','Los 6 archivos de Autoelevadores y Picking']];
+function pantalla(html){document.body.classList.add('sin-datos');q$('#main').innerHTML=`<section class="welcome">${html}</section>`;q$('#estado').hidden=true}
+function lockScreen(err){
+  pantalla(`<div><p class="sec-t" style="margin:0">Acceso para supervisores y jefes</p><h2>Ingresá la clave</h2><p class="muted">Pedile la clave a Ezequiel. Los datos están protegidos y solo se ven con esta clave.</p></div>
+  <form id="lk" class="ajform" style="max-width:360px"><label for="lk-p">Clave de supervisores</label><input id="lk-p" class="sel" type="password" autocomplete="current-password" required>
+  <label class="row" style="gap:6px;text-transform:none;letter-spacing:0;font-weight:400;font-size:14px"><input type="checkbox" id="lk-r" checked> Recordar en este dispositivo</label>
+  ${err?`<p style="color:var(--bad);margin:0">${escH(err)}</p>`:''}<div class="row"><button class="btn solid" type="submit">Entrar</button></div></form>`);
+  q$('#lk-p').focus();
+  q$('#lk').onsubmit=async e=>{e.preventDefault();const p=q$('#lk-p').value;const b=q$('#lk button');b.disabled=true;b.textContent='Abriendo…';
+    try{PUB=await descifrar(ENV,p);if(q$('#lk-r').checked)guardar('mx_key',p);else sessionStorage.setItem('mx_key',JSON.stringify(p));arrancar()}catch(_){lockScreen('Clave incorrecta.')}};
+}
+function sinPublicar(){
+  pantalla(`<div><p class="sec-t" style="margin:0">Matriz de Habilidades</p><h2>Todavía no hay datos publicados</h2><p class="muted">Cuando el administrador publique los datos, los vas a ver acá.</p></div><div class="drop"><button class="btn" type="button" id="w-adm">Soy administrador</button></div>`);
+  q$('#w-adm').onclick=()=>openAdmin();
+}
 function welcome(){
-  document.body.classList.add('sin-datos');
-  q$('#main').innerHTML=`<section class="welcome"><div><p class="sec-t" style="margin:0">Primera vez en este navegador</p><h2>Cargá tus archivos</h2><p class="muted">El tablero lee los Excel de tu carpeta <b>Tarde</b> de OneDrive. Los datos quedan solo en este navegador: no se suben a ningún lado.</p></div>
+  pantalla(`<div><p class="sec-t" style="margin:0">Administrador</p><h2>Cargá tus archivos</h2><p class="muted">El tablero lee los Excel de tu carpeta <b>Tarde</b> de OneDrive. Después tocás <b>Publicar</b> y los supervisores lo ven con su clave.</p></div>
   <div class="steps">${ARCHIVOS.map(([a,b])=>`<div class="step"><b>${a}</b><span>${b}</span></div>`).join('')}</div>
-  <div class="drop"><button class="btn solid" type="button" id="w-cargar">Cargar archivos</button><span class="muted" style="font-size:13px">Lo más fácil es elegir la carpeta Tarde completa: la página encuentra sola lo que necesita.</span></div></section>`;
+  <div class="drop"><button class="btn solid" type="button" id="w-cargar">Cargar archivos</button><span class="muted" style="font-size:13px">Lo más fácil es elegir la carpeta Tarde completa: la página encuentra sola lo que necesita.</span></div>`);
   q$('#w-cargar').onclick=openLoader;
 }
+
+/* ===== Administrador ===== */
+function modal(html){const root=q$('#ficha-root');root.innerHTML=`<div class="scrim" id="m-scrim"></div><aside class="ficha" role="dialog" aria-modal="true"><button class="close" id="m-x" type="button">Cerrar</button>${html}</aside>`;const close=()=>{root.innerHTML=''};q$('#m-scrim').onclick=close;q$('#m-x').onclick=close;return close}
+function openAdmin(){
+  if(ENV&&!PUB){aviso("Primero ingresá la clave de supervisores.");return}
+  const primera=!PUB||!PUB.adminHash;
+  const close=modal(`<div><p class="sec-t" style="margin:0">Modo administrador</p><h2>${primera?'Primera vez':'Ingresar'}</h2></div>
+  <form id="ad" class="ajform">${primera?`<p class="muted" style="margin:0">Todavía no hay datos publicados. Entrá para cargar los archivos; las claves las elegís cuando publiques por primera vez.</p>`:`<label for="ad-p">Clave de administrador</label><input id="ad-p" class="sel" type="password" required autocomplete="current-password">`}
+  <div class="row"><button class="btn solid" type="submit">Entrar</button></div></form>`);
+  const f=q$('#ad');(q$('#ad-p')||f.querySelector('button')).focus();
+  f.onsubmit=async e=>{e.preventDefault();
+    if(!primera){const h=await hashAdmin(q$('#ad-p').value,PUB.adminSalt);if(h!==PUB.adminHash){aviso('Clave de administrador incorrecta.');return}}
+    sessionStorage.setItem('mx_admin','1');close();location.reload()};
+}
+function salirAdmin(){sessionStorage.removeItem('mx_admin');location.reload()}
 function openLoader(){
-  const root=q$('#ficha-root');
-  root.innerHTML=`<div class="scrim" id="l-scrim"></div><aside class="ficha" role="dialog" aria-modal="true" aria-label="Cargar archivos"><button class="close" id="l-x" type="button">Cerrar</button>
-  <div><p class="sec-t" style="margin:0">Actualizar datos</p><h2>Cargar archivos</h2></div>
+  const close=modal(`<div><p class="sec-t" style="margin:0">Actualizar datos</p><h2>Cargar archivos</h2></div>
   <p class="muted" style="margin:0">Elegí la carpeta <b>Tarde</b> y la página busca sola la dotación, la antigüedad, la matriz y los SKAP. Si solo cambió un archivo, podés elegir ese nada más: lo demás queda como estaba.</p>
   <div class="drop"><label class="btn solid" for="l-dir" style="cursor:pointer">Elegir carpeta Tarde</label><input id="l-dir" type="file" webkitdirectory directory multiple hidden>
   <label class="btn" for="l-files" style="cursor:pointer">Elegir archivos sueltos</label><input id="l-files" type="file" multiple accept=".xlsx,.xlsm" hidden></div>
   <p class="muted" style="font-size:12px;margin:0">Desde el celular no se pueden elegir carpetas. Para la dotación conviene la compu, porque el año sale del nombre de la carpeta (“Dotación 2026”).</p>
-  <div class="prog" id="l-prog"></div><div id="l-res"></div></aside>`;
-  const close=()=>{root.innerHTML=''};q$('#l-scrim').onclick=close;q$('#l-x').onclick=close;
+  <div class="prog" id="l-prog"></div><div id="l-res"></div>`);
   q$('#l-dir').onchange=e=>cargar(e.target.files);q$('#l-files').onchange=e=>cargar(e.target.files);
 }
 async function cargar(files){
@@ -769,14 +829,63 @@ async function cargar(files){
    ${R.omitidos?`<div class="muted" style="font-size:13px">${R.omitidos} archivos de la carpeta no hacían falta y se saltearon.</div>`:''}
   </div>
   ${R.warn.length?`<div class="alerts" style="margin-top:10px">${R.warn.map(w=>`<div class="alert"><span class="dot" style="background:var(--warn)"></span><span class="muted">${escH(w)}</span></div>`).join('')}</div>`:''}
-  ${algo?`<div class="row" style="margin-top:12px"><button class="btn solid" id="l-ok" type="button">Ver tablero actualizado</button></div>`:'<p class="muted">No encontré ninguno de los archivos que uso. Revisá que sea la carpeta Tarde.</p>'}`;
-  const b=q$('#l-ok');if(b)b.onclick=()=>{RAW=combinar(RAW,R);
-    if(guardar('mx_raw',RAW)){location.reload();return}
-    if(!BOOTED){q$('#ficha-root').innerHTML='';BOOTED=true;boot(buildData(RAW,CFG));aviso('Este navegador no deja guardar: vas a tener que volver a cargar los archivos la próxima vez.')}
-    else aviso('Este navegador no deja guardar los datos. Recargá la página y volvé a cargar los archivos.')};
+  ${algo?`<div class="row" style="margin-top:12px"><button class="btn solid" id="l-ok" type="button">Ver tablero actualizado</button></div><p class="muted" style="font-size:12px">Los supervisores lo van a ver cuando toques <b>Publicar</b>.</p>`:'<p class="muted">No encontré ninguno de los archivos que uso. Revisá que sea la carpeta Tarde.</p>'}`;
+  const b=q$('#l-ok');if(b)b.onclick=()=>{const base=(WORK&&WORK.raw)||(PUB&&PUB.raw)||null;setWork({raw:combinar(base,R)});location.reload()};
 }
-q$('#cargar').onclick=openLoader;
-if(RAW&&RAW.dot&&RAW.dot.length){BOOTED=true;boot(buildData(RAW,CFG))}else welcome();
+
+/* ===== Publicar ===== */
+async function ghFetch(path,opt={}){const tok=leer('mx_gh');const r=await fetch(`https://api.github.com/repos/${REPO.owner}/${REPO.repo}/contents/${path}`,Object.assign({},opt,{headers:Object.assign({Authorization:'Bearer '+tok,Accept:'application/vnd.github+json'},opt.headers||{})}));return r}
+function openPublicar(){
+  const primera=!PUB||!PUB.adminHash;const key=leer('mx_key')||JSON.parse(sessionStorage.getItem('mx_key')||'null');
+  const tok=leer('mx_gh');
+  const close=modal(`<div><p class="sec-t" style="margin:0">Publicar para supervisores</p><h2>Publicar</h2></div>
+  <form id="pb" class="ajform">
+   ${primera||!key?`<p class="muted" style="margin:0">${primera?'Es la primera publicación: elegí las dos claves.':'Confirmá la clave de supervisores.'}</p>
+   <label for="pb-k">Clave de supervisores (la que les vas a dar)</label><input id="pb-k" class="sel" type="text" required minlength="6" autocomplete="off" value="${escH(key||'')}">`:`<p class="muted" style="margin:0">Se publica con la clave de supervisores actual. <button type="button" class="linkish" id="pb-ch">Cambiar claves</button></p>`}
+   ${primera?`<label for="pb-a">Clave de administrador (solo para vos)</label><input id="pb-a" class="sel" type="password" required minlength="6" autocomplete="new-password">`:''}
+   <div id="pb-ch-w" hidden><label for="pb-k2">Nueva clave de supervisores</label><input id="pb-k2" class="sel" type="text" minlength="6" autocomplete="off"><label for="pb-a2">Nueva clave de administrador (opcional)</label><input id="pb-a2" class="sel" type="password" minlength="6" autocomplete="new-password"></div>
+   ${REPO?`<label for="pb-t">Token de GitHub ${tok?'(ya guardado en este navegador)':''}</label><input id="pb-t" class="sel" type="password" autocomplete="off" placeholder="${tok?'••••••••  (dejalo vacío para usar el guardado)':'Pegá el token para publicar con un clic'}">
+   <p class="muted" style="margin:0;font-size:12px">El token se guarda solo en este navegador. Si no tenés uno, podés publicar descargando el archivo y subiéndolo a GitHub a mano.</p>`:''}
+   <div class="row"><button class="btn solid" type="submit" id="pb-go">${REPO?'Publicar ahora':'Generar archivo'}</button>${REPO?'<button class="btn" type="button" id="pb-dl">Descargar datos.json</button>':''}</div>
+   <div class="prog" id="pb-msg"></div></form>`);
+  const ch=q$('#pb-ch');if(ch)ch.onclick=()=>{q$('#pb-ch-w').hidden=false};
+  async function armar(){
+    let k=q$('#pb-k')?q$('#pb-k').value.trim():key;const k2=q$('#pb-k2')&&q$('#pb-k2').value.trim();if(k2)k=k2;
+    if(!k||k.length<6)throw new Error('La clave de supervisores tiene que tener al menos 6 caracteres.');
+    let adminSalt=PUB&&PUB.adminSalt,adminHash=PUB&&PUB.adminHash;const a=(q$('#pb-a')&&q$('#pb-a').value)||(q$('#pb-a2')&&q$('#pb-a2').value);
+    if(a){adminSalt=b64(crypto.getRandomValues(new Uint8Array(12)));adminHash=await hashAdmin(a,adminSalt)}
+    if(!adminHash)throw new Error('Elegí una clave de administrador.');
+    const src=WORK||PUB;const payload={raw:src.raw,aj:src.aj||null,cfg:Object.assign({},CFG,src.cfg||{}),adminSalt,adminHash,publicado:new Date().toISOString()};
+    return {k,payload,env:await cifrar(payload,k)};
+  }
+  function listo(k,payload){guardar('mx_key',k);PUB=payload;WORK=null;borrar('mx_work')}
+  const msg=t=>{q$('#pb-msg').textContent=t};
+  const dl=q$('#pb-dl');
+  const descargar=async()=>{try{msg('Preparando archivo…');const {k,payload,env}=await armar();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(env)],{type:'application/json'}));a.download='datos.json';document.body.appendChild(a);a.click();a.remove();listo(k,payload);
+    msg('Listo. Subí datos.json a tu repositorio de GitHub (Add file → Upload files), reemplazando el anterior.')}catch(e){msg(e.message)}};
+  if(dl)dl.onclick=descargar;
+  q$('#pb').onsubmit=async e=>{e.preventDefault();if(!REPO){descargar();return}
+    const t=q$('#pb-t').value.trim();if(t)guardar('mx_gh',t);if(!leer('mx_gh')){msg('Pegá el token de GitHub o usá “Descargar datos.json”.');return}
+    try{q$('#pb-go').disabled=true;msg('Cifrando datos…');const {k,payload,env}=await armar();
+      msg('Subiendo a GitHub…');let sha;const g=await ghFetch('datos.json');if(g.ok)sha=(await g.json()).sha;else if(g.status===401||g.status===403)throw new Error('GitHub rechazó el token. Revisá que tenga permiso de escritura en este repositorio.');
+      const content=b64(enc.encode(JSON.stringify(env)));
+      const r=await ghFetch('datos.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Actualizar datos '+new Date().toLocaleString('es-AR'),content,sha})});
+      if(!r.ok)throw new Error('No se pudo subir ('+r.status+'). '+((await r.json().catch(()=>({}))).message||''));
+      listo(k,payload);msg('Publicado. Los supervisores lo ven en 1 o 2 minutos, al recargar la página.');setTimeout(()=>location.reload(),2500)}
+    catch(err){msg(err.message);q$('#pb-go').disabled=false}};
+}
+
+/* ===== Inicio ===== */
+q$('#cargar').onclick=()=>IS_ADMIN?openLoader():null;q$('#adm').onclick=()=>IS_ADMIN?salirAdmin():openAdmin();
+(async()=>{
+  IS_ADMIN=sessionStorage.getItem('mx_admin')==='1';
+  try{const r=await fetch('datos.json?t='+Date.now(),{cache:'no-store'});if(r.ok)ENV=await r.json()}catch(_){}
+  if(!ENV&&window.PRELOAD_RAW&&!WORK){WORK={raw:window.PRELOAD_RAW};IS_ADMIN=true}
+  if(ENV){const k=leer('mx_key')||JSON.parse(sessionStorage.getItem('mx_key')||'null');
+    if(k){try{PUB=await descifrar(ENV,k)}catch(_){borrar('mx_key')}}
+    if(!PUB){lockScreen();return}}
+  arrancar();
+})();
 
 </script>
 
