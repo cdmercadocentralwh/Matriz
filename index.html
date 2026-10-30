@@ -357,7 +357,7 @@ function buildData(raw,cfg){
   const g=new Map();(raw.mx||[]).forEach(([p,tu,ta,sa,ap,f])=>{const k=p+'|'+tu;if(!g.has(k))g.set(k,{n:p,t:tu,s:Array(tareas.length).fill(2),f:Array(tareas.length).fill('')});const r=g.get(k);const i=tIdx(ta);if(i<0)return;r.s[i]=ap==='NO APTO'?2:(sa==='SI'?0:1);r.f[i]=f||''});
   const matriz=[...g.values()].sort((a,b)=>a.n.localeCompare(b.n)||a.t.localeCompare(b.t)).map(r=>({...r,l:match(r.n,r.t)}));
   const skap=(raw.skap||[]).map(([l,n,t,se,b,p,e])=>({l,n,t,se,b,p,e}));
-  const aed={};(raw.ae||[]).forEach(([l,n,t,se,h,it,es])=>{const x=aed[l]||(aed[l]={l,n,t,se,ok:0,tot:0,nok:[]});x.tot++;if(es==='OK')x.ok++;else x.nok.push([h,it,cfg.fobj||''])});
+  const aed={};(raw.ae||[]).forEach(([l,n,t,se,h,it,es])=>{const x=aed[l]||(aed[l]={l,n,t,se,ok:0,tot:0,nok:[],oks:[]});x.tot++;if(es==='OK'){x.ok++;x.oks.push([h,it])}else x.nok.push([h,it,cfg.fobj||''])});
   return {months:keys.map(k=>`${Math.floor(k/100)}-${String(k%100).padStart(2,'0')}`),people:Object.values(people),tareas,matriz,skap,ae:Object.values(aed),meta:raw.meta||{}};
 }
 
@@ -374,7 +374,7 @@ const pct=x=>Math.round(x*100)+'%';
 const fobjTxt=f=>{const d=new Date(f+'T12:00:00');const v=d<new Date();return `Objetivo ${d.toLocaleDateString('es-AR')}${v?' · vencido':''}`};
 const TURNOS=['Todos','Mañana','Tarde','Noche','Intermedio'];
 const VIEWS=[['resumen','Resumen'],['dotacion','Dotación'],['tempos','Tempos'],['movimientos','Movimientos'],['matriz','Matriz'],['tareas','Capacidad por tarea'],['skap','SKAP'],['plan','Plan de acción'],['revision','Revisión']];
-const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
+const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',plSec:'Todos',plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
 S.admin=true;
 try{const v=localStorage.getItem('mx_turno');if(v&&TURNOS.includes(v))S.t=v}catch(e){}
 
@@ -440,7 +440,7 @@ function shell(){
   $('#q').addEventListener('change',e=>{const v=norm(e.target.value);const p=P.find(x=>norm(x.n)===v)||P.find(x=>norm(x.n).includes(v));if(p){openFicha(p.l);e.target.value=''}});
 
   window.addEventListener('hashchange',route);
-  document.addEventListener('click',e=>{const a=e.target.closest('[data-aj]');if(a){openAJ(a.dataset.aj);return}const f=e.target.closest('[data-f]');if(f){openFicha(f.dataset.f)}});
+  document.addEventListener('click',e=>{const g=e.target.closest('[data-goplan]');if(g){S.plP=g.dataset.goplan;S.plSec='Todos';S.plH=null;S.plE='NOK';$('#ficha-root').innerHTML='';if(location.hash==='#plan')render();else location.hash='plan';return}const a=e.target.closest('[data-aj]');if(a){openAJ(a.dataset.aj);return}const f=e.target.closest('[data-f]');if(f){openFicha(f.dataset.f)}});
 }
 function renderTabs(){$('#tabs').innerHTML=VIEWS.filter(v=>v[0]!=='revision'||S.admin).map(([id,n],k)=>`<a class="tab" href="#${id}" data-v="${id}"><b>${id==='revision'?'✎':String(k+1).padStart(2,'0')}</b>${n}</a>`).join('')}
 function setAdmin(v){S.admin=v;try{localStorage.setItem('mx_admin',v?'1':'0')}catch(e){};renderTabs();if(!v&&S.view==='revision')location.hash='resumen';else render();toast(v?'Modo administrador activado.':'Saliste del modo administrador.')}
@@ -632,21 +632,36 @@ function vSkap(){
   <h3 style="margin-top:18px">Por habilidad</h3>${hbars([['Básico',Math.round(avg('b')*100)],['Proactivo',Math.round(avg('p')*100)],['Empoderamiento',Math.round(avg('e')*100)]],100,v=>v+'%')}</div></div>`;
 }
 function vPlan(){
-  const ae=DATA.ae.filter(a=>turnoOk(a.t)).map(a=>({...a,nk:a.nok.length})).sort((a,b)=>b.nk-a.nk||a.n.localeCompare(b.n));
-  const tot=ae.reduce((x,a)=>x+a.nk,0);const hab={};ae.forEach(a=>a.nok.forEach(([h])=>hab[h]=(hab[h]||0)+1));
-  const items={};ae.forEach(a=>a.nok.forEach(([h,t])=>{items[t]=(items[t]||0)+1}));const topI=Object.entries(items).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  return head('Plan de acción','Entrenamientos marcados NOK en los SKAP de cada turno. Tocá una persona para ver qué le falta.')+
-  `<div class="kpis">${kpi('Entrenamientos NOK',tot,`${ae.filter(a=>a.nk).length} personas con pendientes`,'hero')}${kpi('Personas al día',ae.filter(a=>!a.nk).length,`de ${ae.length} evaluadas`)}${kpi('Cumplimiento',pct(ae.reduce((x,a)=>x+a.ok,0)/Math.max(1,ae.reduce((x,a)=>x+a.tot,0))),'ítems OK sobre el total')}</div>
-  <div class="grid2"><div class="card"><h3>Personas</h3><div class="tblwrap"><table><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th>OK</th><th>NOK</th><th style="min-width:120px">Avance</th></tr></thead><tbody>
-  ${ae.map(a=>`<tr class="click" data-f="${a.l}"><td>${esc(a.n)}</td><td>${esc(a.t)}</td><td class="muted">${a.se}</td><td class="num">${a.ok}/${a.tot}</td><td>${a.nk?`<span class="pill p-bad">${a.nk}</span>`:'<span class="pill p-ok">Al día</span>'}</td><td><span class="meter"><i style="width:${a.ok/Math.max(1,a.tot)*100}%"></i></span></td></tr>`).join('')||`<tr><td colspan="6" class="empty">Sin datos para este turno.</td></tr>`}
-  </tbody></table></div></div>
-  <div class="card"><h3>NOK por habilidad</h3>${hbars(Object.entries(hab).sort((a,b)=>b[1]-a[1]),Math.max(1,...Object.values(hab)))}
-  <h3 style="margin-top:18px">Ítems más pendientes</h3>${topI.map(([t,n])=>`<div class="nok"><span class="pill p-bad num">${n}</span> ${esc(t)}</div>`).join('')||'<p class="muted">Sin pendientes.</p>'}</div></div>`;
+  const skp=l=>{const k=skByL[l];return k?((k.b||0)*5+(k.p||0)*3+(k.e||0)*2)/10:null};
+  const A=DATA.ae.filter(a=>turnoOk(a.t)&&(S.plSec==='Todos'||a.se===S.plSec)).sort((a,b)=>a.n.localeCompare(b.n));
+  if(S.plP&&!A.some(a=>a.l===S.plP))S.plP=null;
+  const sel=S.plP?A.filter(a=>a.l===S.plP):A;
+  const allRows=[...(S.plE!=='OK'?sel.flatMap(a=>a.nok.map(([h,t,f])=>({a,h,t,f,e:'NOK'}))):[]),...(S.plE!=='NOK'?sel.flatMap(a=>(a.oks||[]).map(([h,t])=>({a,h,t,f:'',e:'OK'}))):[])];
+  const habs={};allRows.forEach(r=>habs[r.h]=(habs[r.h]||0)+1);
+  if(S.plH&&!habs[S.plH])S.plH=null;
+  const rows=S.plH?allRows.filter(r=>r.h===S.plH):allRows;
+  const conNok=sel.filter(a=>a.nok.length).length;
+  const ok=sel.reduce((x,a)=>x+a.ok,0),tot=sel.reduce((x,a)=>x+a.tot,0);
+  let skAvg=null;if(S.plP)skAvg=skp(S.plP);else{const K=DATA.skap.filter(k=>turnoOk(k.t)&&(S.plSec==='Todos'||k.se===S.plSec));if(K.length){const av=f=>K.reduce((x,k)=>x+(k[f]||0),0)/K.length;skAvg=(av('b')*5+av('p')*3+av('e')*2)/10}}
+  const P1=S.plP?sel[0]:null;
+  const secs=[['Todos','Todos'],['AE','Autoelevadores'],['Picking','Picking']];
+  return head('Plan de acción','Entrenamientos NOK de los SKAP. Filtrá por turno (arriba), sector o persona: todos los números cambian con lo que elijas.')+
+  `<div class="row" style="margin-bottom:12px"><div class="chips" id="plSec">${secs.map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${S.plSec===k}">${l}</button>`).join('')}</div>${S.plP?`<span class="pill p-gold">${esc(P1.n)}</span><button class="linkish" data-pp="">Ver todas las personas</button>`:''}</div>
+  <div class="kpis">${kpi('Personas a capacitar',conNok,S.plP?(conNok?'tiene entrenamientos pendientes':'está al día'):`de ${sel.length} evaluadas`,'hero')}${kpi('Capacitaciones pendientes',sel.reduce((x,a)=>x+a.nok.length,0),'entrenamientos NOK')}${kpi('Entrenamientos OK',ok,`de ${tot} · ${pct(tot?ok/tot:0)}`)}${kpi('SKAP %',skAvg!=null?pct(skAvg):'—',S.plP?'puntaje de la persona':'promedio')}</div>
+  <div class="grid2" style="grid-template-columns:minmax(0,.8fr) minmax(0,2fr)"><div class="card"><h3>Personas <small>${A.length}</small></h3><div class="tblwrap" style="max-height:640px">
+  <button class="pickbar" data-pp="" aria-pressed="${!S.plP}" style="display:flex;justify-content:space-between;align-items:center;width:100%"><span>Todas las personas</span><span class="num muted">${A.reduce((x,a)=>x+a.nok.length,0)}</span></button>
+  ${A.map(a=>`<button class="pickbar" data-pp="${a.l}" aria-pressed="${S.plP===a.l}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%"><span style="text-align:left">${esc(a.n)}<br><span class="muted" style="font-size:12px">${esc(a.t)} · ${a.se==='AE'?'Autoelevadores':a.se}</span></span>${a.nok.length?`<span class="pill p-bad num">${a.nok.length}</span>`:'<span class="pill p-ok">Al día</span>'}</button>`).join('')||'<p class="muted">Sin datos para este filtro.</p>'}</div></div>
+  <div class="card"><div class="row" style="margin-bottom:10px"><h3 style="margin:0">Entrenamientos <small>${rows.length}</small></h3><div class="chips" id="plE">${[['NOK','Pendientes (NOK)'],['OK','OK'],['Todos','Todos']].map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${S.plE===k}">${l}</button>`).join('')}</div><span class="spacer"></span><div class="chips">${['',...Object.keys(habs).sort()].map(h=>`<button class="chip" data-ph="${esc(h)}" aria-pressed="${(S.plH||'')===h}">${h?`${esc(h)} (${habs[h]})`:'Todas las habilidades'}</button>`).join('')}</div></div>
+  <div class="tblwrap" style="max-height:640px"><table><thead><tr><th>Apellido y nombre</th><th>Entrenamiento</th><th>Habilidad</th><th>Estado</th><th>Fecha objetivo</th><th>SKAP %</th></tr></thead><tbody>
+  ${rows.map(r=>{const v=skp(r.a.l);return `<tr class="click" data-f="${r.a.l}"><td style="white-space:nowrap">${esc(r.a.n)}</td><td>${esc(r.t)}</td><td class="muted">${esc(r.h)}</td><td><span class="pill ${r.e==='OK'?'p-ok':'p-bad'}">${r.e}</span></td><td style="white-space:nowrap">${r.f?`<span class="pill ${new Date(r.f+'T12:00:00')<new Date()?'p-bad':'p-gold'}">${new Date(r.f+'T12:00:00').toLocaleDateString('es-AR')}</span>`:'—'}</td><td class="num">${v!=null?pct(v):'—'}</td></tr>`}).join('')||`<tr><td colspan="6" class="empty">${S.plE==='OK'?'No hay entrenamientos OK para este filtro.':(S.plP?'Esta persona no tiene entrenamientos pendientes.':'Sin pendientes para este filtro.')}</td></tr>`}
+  </tbody></table></div></div></div>`;
 }
 function bindView(){
   const chipset=(id,key)=>{const el=document.getElementById(id);if(el)el.onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;S[key]=b.dataset.k;render()}};
   chipset('dotF','dotF');
-  document.querySelectorAll('[data-dk]').forEach(b=>b.onclick=()=>{S.dotF=S.dotF===b.dataset.dk&&b.dataset.dk!=='activa'?'activa':b.dataset.dk;render();const t=document.querySelector('.grid2 .card');if(t&&innerWidth<860)t.scrollIntoView({behavior:'smooth',block:'start'})});chipset('tempoF','tempoF');chipset('movF','movF');chipset('sortMx','sortMx');chipset('skSec','skSec');
+  document.querySelectorAll('[data-dk]').forEach(b=>b.onclick=()=>{S.dotF=S.dotF===b.dataset.dk&&b.dataset.dk!=='activa'?'activa':b.dataset.dk;render();const t=document.querySelector('.grid2 .card');if(t&&innerWidth<860)t.scrollIntoView({behavior:'smooth',block:'start'})});chipset('tempoF','tempoF');chipset('movF','movF');chipset('sortMx','sortMx');chipset('skSec','skSec');chipset('plSec','plSec');chipset('plE','plE');
+  document.querySelectorAll('[data-pp]').forEach(b=>b.onclick=()=>{S.plP=b.dataset.pp||null;render()});
+  document.querySelectorAll('[data-ph]').forEach(b=>b.onclick=()=>{S.plH=b.dataset.ph||null;render()});
   const oi=document.getElementById('onlyIn');if(oi)oi.onchange=e=>{S.onlyIn=e.target.checked;render()};
   document.querySelectorAll('[data-task]').forEach(b=>b.onclick=()=>{const k=+b.dataset.task;S.task=S.task===k?null:k;render()});
   const cp=document.getElementById('copyAJ');if(cp)cp.onclick=()=>{const tsv=['Legajo\tApellido y nombre\tTipo\tÁrea\tTarea/Sector\tDetalle',...AJ.map(a=>[a.l,(byL[a.l]||{}).n||'',AJT[a.k],a.area||'',a.ta||'',a.d||''].join('\t'))].join('\n');navigator.clipboard.writeText(tsv).then(()=>toast('Copiado. Pegalo en una hoja “Ajustes” de tu Excel.')).catch(()=>toast('No se pudo copiar desde este navegador.'))};
@@ -676,7 +691,7 @@ function openFicha(l){
   ${evs.length?`<div class="row" style="margin-top:8px">${evs.map(e=>`<span class="pill ${EVL[e.k][1]}">${EVL[e.k][0]} · ${ml(e.i)}</span>`).join('')}</div>`:''}</div>
   ${mx?`<div><p class="sec-t">Tareas</p><div class="tchips">${DATA.tareas.map((t,k)=>`<span class="tchip s${mx.s[k]}" title="${['Sabe y apto','Falta capacitar','No apto'][mx.s[k]]}">${esc(t)}</span>`).join('')}</div></div>`:'<p class="muted">No está cargado en la Matriz por Tareas.</p>'}
   ${prog}
-  ${ae?`<div><p class="sec-t">Plan de acción · ${ae.ok}/${ae.tot} OK</p>${ae.nok.length?`<details ${ae.nok.length<=6?'open':''}><summary>${ae.nok.length} entrenamientos NOK</summary>${ae.nok.map(([h,t,f])=>`<div class="nok"><span class="muted">${esc(h)}</span><br>${esc(t)}${f?` <span class="pill ${new Date(f+'T12:00:00')<new Date()?'p-bad':'p-gold'}">${fobjTxt(f)}</span>`:''}</div>`).join('')}</details>`:'<span class="pill p-ok">Sin pendientes</span>'}</div>`:''}
+  ${ae?`<div><p class="sec-t">Plan de acción · ${ae.ok}/${ae.tot} OK</p>${ae.nok.length?`<details ${ae.nok.length<=6?'open':''}><summary>${ae.nok.length} entrenamientos NOK</summary>${ae.nok.map(([h,t,f])=>`<div class="nok"><span class="muted">${esc(h)}</span><br>${esc(t)}${f?` <span class="pill ${new Date(f+'T12:00:00')<new Date()?'p-bad':'p-gold'}">${fobjTxt(f)}</span>`:''}</div>`).join('')}</details>`:'<span class="pill p-ok">Sin pendientes</span>'}${(ae.oks||[]).length?`<details style="margin-top:8px"><summary style="color:var(--ok)">Ver ${ae.oks.length} entrenamientos OK</summary>${ae.oks.map(([h,t])=>`<div class="nok"><span class="muted">${esc(h)}</span><br>${esc(t)} <span class="pill p-ok">OK</span></div>`).join('')}</details>`:''}<button class="btn" style="margin-top:8px" data-goplan="${ae.l}">Ver en Plan de acción</button></div>`:''}
   </aside>`;
   const close=()=>{root.innerHTML='';document.removeEventListener('keydown',esc_)};
   const esc_=e=>{if(e.key==='Escape')close()};
