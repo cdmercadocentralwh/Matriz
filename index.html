@@ -401,12 +401,12 @@ const AJ_DEF=[
   {l:'29030846',k:'traslado',area:'Expedición',d:'Sigue efectiva.'},
   {l:'29035113',k:'traslado',area:'Distribución',d:'Sigue efectiva.'},
   {l:'29035619',k:'efect',d:'Quedó efectivo en otra área.'},
-  {l:'29010456',k:'activo',d:'Sigue efectivo en el depósito. No figura en el archivo de dotación desde agosto 2026.'},
   {l:'29036252',k:'nota',ta:'Taller',d:'Efectivo de Taller.'}
 ];
-const AJT={traslado:'Cambio de sector',efect:'Efectivizado',activo:'Sigue en nómina',baja:'Baja confirmada',nota:'Nota'};
+const AJT={traslado:'Cambio de sector',efect:'Efectivizado',baja:'Baja confirmada',nota:'Nota'};
 const ajText=a=>a.k==='traslado'?`Pasó a ${a.area||'otra área'}.${a.d?' '+a.d:''}`:(a.d||'');
-let AJ=(window.SRC_AJ||AJ_DEF).map(a=>({...a}));
+// La dotación sale siempre igual al Excel: ya no hay ajustes que sumen personas que no figuran.
+let AJ=(window.SRC_AJ||AJ_DEF).filter(a=>a.k!=='activo').map(a=>({...a}));
 function saveAJ(){window.onAjChange&&window.onAjChange(AJ);if(window.SRC_INFO)window.SRC_INFO.pendiente=true;setEstado()}
 let AJL={},EV=[];
 function applyAJ(){
