@@ -374,7 +374,7 @@ const pct=x=>Math.round(x*100)+'%';
 const fobjTxt=f=>{const d=new Date(f+'T12:00:00');const v=d<new Date();return `Objetivo ${d.toLocaleDateString('es-AR')}${v?' · vencido':''}`};
 const TURNOS=['Todos','Mañana','Tarde','Noche','Intermedio'];
 const VIEWS=[['resumen','Resumen'],['dotacion','Dotación'],['tempos','Tempos'],['movimientos','Movimientos'],['matriz','Matriz'],['tareas','Capacidad por tarea'],['skap','SKAP'],['plan','Plan de acción'],['revision','Revisión']];
-const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',plSec:'Todos',plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
+const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',plSec:'Todos',skAll:false,plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
 S.admin=!!window.IS_ADMIN;
 try{const v=localStorage.getItem('mx_turno');if(v&&TURNOS.includes(v))S.t=v}catch(e){}
 
@@ -616,16 +616,20 @@ function vTareas(){
    :`<h3>Elegí una tarea</h3><p class="muted">Tocá una tarjeta para ver quién la sabe y a quién falta capacitar.</p>${hbars(T.slice().sort((a,b)=>a.n-b.n).slice(0,6).map(t=>[t.t,t.n]),max)}<p class="muted" style="font-size:12px">Las 6 tareas con menos personas capacitadas.</p>`}</div></div>`;
 }
 function vSkap(){
-  let sk=DATA.skap.filter(s=>turnoOk(s.t)&&(S.skSec==='Todos'||s.se===S.skSec)).map(s=>({...s,sc:((s.b||0)*5+(s.p||0)*3+(s.e||0)*2)/10})).sort((a,b)=>b.sc-a.sc);
+  // SKAP: solo personal adentro en el mes elegido (efectivos y tempos activos); las bajas y los tempos afuera no cuentan
+  const adentro=s=>s.l&&byL[s.l]&&isIn(st(byL[s.l],S.m));
+  const base=DATA.skap.filter(s=>turnoOk(s.t)&&(S.skSec==='Todos'||s.se===S.skSec));
+  const fuera=base.filter(s=>!adentro(s));
+  let sk=base.filter(s=>S.skAll||adentro(s)).map(s=>({...s,sc:((s.b||0)*5+(s.p||0)*3+(s.e||0)*2)/10})).sort((a,b)=>b.sc-a.sc);
   const avg=k=>sk.length?sk.reduce((a,s)=>a+(s[k]||0),0)/sk.length:0;
   const crit=sk.filter(s=>(s.e??1)<.7).length,top=sk.filter(s=>(s.e??0)>=.9).length;
-  const tur=['Mañana','Tarde','Noche'].map(t=>{const a=DATA.skap.filter(s=>s.t===t&&(S.skSec==='Todos'||s.se===S.skSec));return [t,a.length?a.reduce((x,s)=>x+((s.b||0)*5+(s.p||0)*3+(s.e||0)*2)/10,0)/a.length:0]});
+  const tur=['Mañana','Tarde','Noche'].map(t=>{const a=DATA.skap.filter(s=>s.t===t&&(S.skSec==='Todos'||s.se===S.skSec)&&(S.skAll||adentro(s)));return [t,a.length?a.reduce((x,s)=>x+((s.b||0)*5+(s.p||0)*3+(s.e||0)*2)/10,0)/a.length:0]});
   const bar=v=>`<span class="meter gold" style="display:block;width:100%;min-width:60px"><i style="width:${(v||0)*100}%"></i></span>`;
   return head('SKAP','Puntaje SKAP = básico × 50% + proactivo × 30% + empoderamiento × 20%. Crítico: empoderamiento debajo de 70%.')+
-  `<div class="row" style="margin-bottom:12px"><div class="chips" id="skSec">${['Todos','AE','Picking'].map(k=>`<button class="chip" data-k="${k}" aria-pressed="${S.skSec===k}">${k==='AE'?'Autoelevadores':k}</button>`).join('')}</div></div>
+  `<div class="row" style="margin-bottom:12px"><div class="chips" id="skSec">${['Todos','AE','Picking'].map(k=>`<button class="chip" data-k="${k}" aria-pressed="${S.skSec===k}">${k==='AE'?'Autoelevadores':k}</button>`).join('')}</div><span class="spacer"></span>${fuera.length?`<button class="chip" id="skAll" aria-pressed="${S.skAll}">${S.skAll?'Ocultar':'Mostrar'} ${fuera.length} que ya no están (bajas y tempos afuera)</button>`:''}</div>
   <div class="kpis">${kpi('SKAP promedio',pct(avg('sc')),`${sk.length} personas`,'hero')}${kpi('Personas críticas',crit,'empoderamiento < 70%')}${kpi('Personas +90',top,'empoderamiento ≥ 90%')}${kpi('Básico · Proact. · Empod.',`${pct(avg('b'))}`,`proactivo ${pct(avg('p'))} · empoderamiento ${pct(avg('e'))}`)}</div>
   <div class="grid2"><div class="card"><h3>Por persona</h3><div class="tblwrap"><table><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th>Básico</th><th>Proactivo</th><th>Empoder.</th><th>SKAP</th></tr></thead><tbody>
-  ${sk.map(s=>`<tr class="click" data-f="${s.l}"><td>${esc(s.n)}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td>${bar(s.b)}</td><td>${bar(s.p)}</td><td>${bar(s.e)}</td><td class="num"><span class="pill ${(s.e??1)<.7?'p-bad':s.sc>=.9?'p-ok':'p-gold'}">${pct(s.sc)}</span></td></tr>`).join('')||`<tr><td colspan="7" class="empty">Sin evaluaciones para este filtro.</td></tr>`}
+  ${sk.map(s=>`<tr class="click" data-f="${s.l}"><td>${esc(s.n)}${S.skAll&&!adentro(s)?' <span class="pill p-bad">No está</span>':''}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td>${bar(s.b)}</td><td>${bar(s.p)}</td><td>${bar(s.e)}</td><td class="num"><span class="pill ${(s.e??1)<.7?'p-bad':s.sc>=.9?'p-ok':'p-gold'}">${pct(s.sc)}</span></td></tr>`).join('')||`<tr><td colspan="7" class="empty">Sin evaluaciones para este filtro.</td></tr>`}
   </tbody></table></div></div>
   <div class="card"><h3>SKAP por turno</h3>${hbars(tur.map(([t,v])=>[t,Math.round(v*100)]),100,v=>v+'%')}
   <h3 style="margin-top:18px">Por habilidad</h3>${hbars([['Básico',Math.round(avg('b')*100)],['Proactivo',Math.round(avg('p')*100)],['Empoderamiento',Math.round(avg('e')*100)]],100,v=>v+'%')}</div></div>`;
@@ -658,7 +662,7 @@ function vPlan(){
 function bindView(){
   const chipset=(id,key)=>{const el=document.getElementById(id);if(el)el.onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;S[key]=b.dataset.k;render()}};
   chipset('dotF','dotF');
-  document.querySelectorAll('[data-dk]').forEach(b=>b.onclick=()=>{S.dotF=S.dotF===b.dataset.dk&&b.dataset.dk!=='activa'?'activa':b.dataset.dk;render();const t=document.querySelector('.grid2 .card');if(t&&innerWidth<860)t.scrollIntoView({behavior:'smooth',block:'start'})});chipset('tempoF','tempoF');chipset('movF','movF');chipset('sortMx','sortMx');chipset('skSec','skSec');chipset('plSec','plSec');chipset('plE','plE');
+  document.querySelectorAll('[data-dk]').forEach(b=>b.onclick=()=>{S.dotF=S.dotF===b.dataset.dk&&b.dataset.dk!=='activa'?'activa':b.dataset.dk;render();const t=document.querySelector('.grid2 .card');if(t&&innerWidth<860)t.scrollIntoView({behavior:'smooth',block:'start'})});chipset('tempoF','tempoF');chipset('movF','movF');chipset('sortMx','sortMx');chipset('skSec','skSec');{const b=document.getElementById('skAll');if(b)b.onclick=()=>{S.skAll=!S.skAll;render()}}chipset('plSec','plSec');chipset('plE','plE');
   document.querySelectorAll('[data-pp]').forEach(b=>b.onclick=()=>{S.plP=b.dataset.pp||null;render()});
   document.querySelectorAll('[data-ph]').forEach(b=>b.onclick=()=>{S.plH=b.dataset.ph||null;render()});
   const oi=document.getElementById('onlyIn');if(oi)oi.onchange=e=>{S.onlyIn=e.target.checked;render()};
