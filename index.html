@@ -175,6 +175,66 @@ details summary{cursor:pointer;color:var(--gold);font-weight:600;font-size:13px}
 </style>
 
 </head><body>
+<!-- ACCESO: pide usuario de Mi Productividad (legajo o correo de administrador) - solo administrador -->
+<style id="gate-css">
+html.gate-lock body>*:not(#gate){visibility:hidden!important}
+html.gate-lock body{overflow:hidden!important}
+#gate{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:#0b0b0b;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#f2f2f2}
+#gate[hidden]{display:none}
+#gate .g-card{width:min(360px,92vw);background:#161616;border:1px solid #2b2b2b;border-top:4px solid #FFC000;border-radius:14px;padding:26px 22px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+#gate small{display:block;color:#FFC000;font-weight:700;letter-spacing:.12em;font-size:11px}
+#gate h2{margin:6px 0 4px;font-size:22px}
+#gate p{margin:0 0 16px;color:#9a9a9a;font-size:13px}
+#gate .g-tabs{display:flex;gap:6px;margin-bottom:12px}
+#gate .g-tabs button{flex:1;padding:8px;border-radius:8px;border:1px solid #333;background:#0f0f0f;color:#bbb;font:inherit;font-size:13px;cursor:pointer}
+#gate .g-tabs button.on{background:#FFC000;color:#111;border-color:#FFC000;font-weight:700}
+#gate input{width:100%;box-sizing:border-box;margin-bottom:10px;padding:11px 12px;border-radius:8px;border:1px solid #333;background:#0b0b0b;color:#f2f2f2;font:inherit;font-size:15px}
+#gate .g-go{width:100%;padding:11px;border:0;border-radius:8px;background:#FFC000;color:#111;font:inherit;font-weight:800;font-size:15px;cursor:pointer}
+#gate .g-go:disabled{opacity:.6}
+#gate .g-err{color:#ff6b6b;font-size:13px;min-height:18px;margin:2px 0 8px}
+#gate-out{position:fixed;right:10px;bottom:10px;z-index:2147482000;padding:5px 10px;border-radius:999px;border:1px solid #444;background:rgba(20,20,20,.85);color:#bbb;font:12px system-ui,sans-serif;cursor:pointer}
+html.gate-lock #gate-out{display:none}
+</style>
+<script>document.documentElement.classList.add('gate-lock');</script>
+<div id="gate" hidden>
+  <form class="g-card" id="gate-form" autocomplete="on">
+    <small>CD MERCADO CENTRAL</small>
+    <h2>Ingresar</h2>
+    <p>Acceso solo para administrador.</p>
+    <input id="gate-user" placeholder="Usuario" autocomplete="username" autocapitalize="none" required>
+    <input id="gate-pass" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+    <div class="g-err" id="gate-err"></div>
+    <button class="g-go" id="gate-go">Entrar</button>
+  </form>
+</div>
+<button id="gate-out" type="button" title="Cerrar sesión">Salir</button>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(function(){
+  var URL_='https://chwxnahvdpufcuyjpocj.supabase.co', KEY='sb_publishable_4uRwwSKwjzv5T84NF2PZ-Q_-9O__I_B';
+  var g=document.getElementById('gate');
+  var sb=window.supabase&&window.supabase.createClient?window.supabase.createClient(URL_,KEY):null;
+  function esAdm(s){ var e=(s&&s.user&&s.user.email)||''; return !!s && !/^(?!administrador@)[^@]+@personal\.local$/i.test(e); }
+  function abrir(){document.documentElement.classList.remove('gate-lock');g.hidden=true;}
+  if(!sb){g.hidden=false;document.getElementById('gate-err').textContent='Sin conexión. Recargá la página.';return;}
+  sb.auth.getSession().then(function(r){ var s=r.data&&r.data.session; if(esAdm(s)) abrir(); else { if(s) sb.auth.signOut(); g.hidden=false; } });
+  document.getElementById('gate-form').onsubmit=function(e){
+    e.preventDefault();
+    var u=document.getElementById('gate-user').value.trim(), p=document.getElementById('gate-pass').value, err=document.getElementById('gate-err'), go=document.getElementById('gate-go');
+    if(!u||!p) return; err.textContent=''; go.disabled=true; go.textContent='Ingresando…';
+    function mal(t){ go.disabled=false; go.textContent='Entrar'; err.textContent=t; }
+    sb.auth.signInWithPassword({email: u.indexOf('@')<0 ? u+'@personal.local' : u, password:p}).then(function(r){
+      if(r.error) return mal('Usuario o contraseña incorrectos.');
+      if(!esAdm(r.data&&r.data.session)) return sb.auth.signOut().then(function(){ mal('Solo el administrador puede entrar.'); });
+      location.reload();
+    });
+  };
+  document.getElementById('gate-out').onclick=function(){ sb.auth.signOut().then(function(){ location.reload(); }); };
+})();
+</script>
+<!-- FIN ACCESO -->
+
+
 <header class="top">
   <div class="wrap">
     <div class="bar">
