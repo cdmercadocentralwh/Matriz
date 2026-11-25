@@ -132,6 +132,18 @@ tr.click:hover td{background:var(--panel2)}
 .meter i{display:block;height:100%;background:var(--ok);border-radius:9px}
 .meter.gold i{background:var(--gold)}
 
+.ring{display:inline-block;vertical-align:middle;line-height:0}
+svg text.ring-t{fill:var(--fg);font-size:10.5px;font-weight:700;font-family:var(--body)}
+svg text.ring-t.big{font-size:8.5px}
+.sktbl td.ctr,.sktbl th.ctr{text-align:center}
+.sktbl td{padding:5px 8px}
+.delta{display:inline-block;font-weight:700;font-size:13px;padding:3px 9px;border-radius:99px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.delta.up{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.delta.down{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.delta.eq{background:var(--na);color:var(--na-fg)}
+.skhoy{display:inline-block;min-width:54px;font-family:var(--display);font-weight:700;font-size:18px;padding:3px 10px;border-radius:8px;border:2px solid var(--c);color:var(--fg)}
+.skbigs{display:flex;justify-content:space-around;gap:10px;flex-wrap:wrap}
+.skbig{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
 .hbar{display:grid;grid-template-columns:120px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:13px;margin:6px 0}
 .hbar .tr{height:14px;background:var(--na);border-radius:4px;overflow:hidden}
 .hbar .tr i{display:block;height:100%;background:var(--gold)}
@@ -385,12 +397,26 @@ async function procesarArchivos(files,onStep){
     }catch(e){R.warn.push(`No pude leer “${pathOf(f)}”: ${e.message}`)}}
   return R;
 }
+/* Historial SKAP: cada vez que se cargan los SKAP, queda asentado el puntaje de cada persona si cambió */
+const skScore=(b,p,e)=>((b||0)*5+(p||0)*3+(e||0)*2)/10;
+function histSkap(prev,nuevo,cuando){
+  const H=JSON.parse(JSON.stringify((prev&&prev.skHist)||{}));const hoy=cuando.slice(0,10);
+  const seed=((prev&&prev.meta&&prev.meta.cargado)||cuando).slice(0,10);
+  // La primera vez, lo que ya estaba publicado queda como punto de partida
+  ((prev&&prev.skap)||[]).forEach(([l,n,t,se,b,p,e])=>{const k=l+'|'+se;if(!H[k])H[k]=[[seed,b,p,e]]});
+  const igual=(a,b)=>Math.abs((a||0)-(b||0))<1e-6;
+  nuevo.forEach(([l,n,t,se,b,p,e])=>{const k=l+'|'+se;const h=H[k]||(H[k]=[]);const u=h[h.length-1];
+    if(u&&igual(u[1],b)&&igual(u[2],p)&&igual(u[3],e))return;
+    if(u&&h.length>1&&u[0]===hoy)h[h.length-1]=[hoy,b,p,e];else h.push([hoy,b,p,e])});
+  return H;
+}
 /* Combina lo cargado con lo que ya había: cada parte nueva reemplaza a la anterior */
 function combinar(prev,R){
   const raw=prev?JSON.parse(JSON.stringify(prev)):{};
   if(R.usados.dot)raw.dot=R.dot;if(R.ant)raw.ant=R.ant;if(R.mx)raw.mx=R.mx;
-  if(R.usados.skap)raw.skap=R.skap;if(R.usados.ae)raw.ae=R.ae;
-  raw.meta={cargado:new Date().toISOString(),warn:R.warn};
+  const ahora=new Date().toISOString();
+  if(R.usados.skap){raw.skHist=histSkap(prev,R.skap,ahora);raw.skap=R.skap}if(R.usados.ae)raw.ae=R.ae;
+  raw.meta={cargado:ahora,warn:R.warn};
   return raw;
 }
 
@@ -418,7 +444,7 @@ function buildData(raw,cfg){
   const matriz=[...g.values()].sort((a,b)=>a.n.localeCompare(b.n)||a.t.localeCompare(b.t)).map(r=>({...r,l:match(r.n,r.t)}));
   const skap=(raw.skap||[]).map(([l,n,t,se,b,p,e])=>({l,n,t,se,b,p,e}));
   const aed={};(raw.ae||[]).forEach(([l,n,t,se,h,it,es])=>{const x=aed[l]||(aed[l]={l,n,t,se,ok:0,tot:0,nok:[],oks:[]});x.tot++;if(es==='OK'){x.ok++;x.oks.push([h,it])}else x.nok.push([h,it,''])});
-  return {months:keys.map(k=>`${Math.floor(k/100)}-${String(k%100).padStart(2,'0')}`),people:Object.values(people),tareas,matriz,skap,ae:Object.values(aed),meta:raw.meta||{}};
+  return {months:keys.map(k=>`${Math.floor(k/100)}-${String(k%100).padStart(2,'0')}`),people:Object.values(people),tareas,matriz,skap,skHist:raw.skHist||{},ae:Object.values(aed),meta:raw.meta||{}};
 }
 
 </script>
@@ -431,10 +457,11 @@ const ml=i=>{const [y,m]=DATA.months[i].split('-');return MESES[+m-1]+' '+y.slic
 const mlong=i=>{const [y,m]=DATA.months[i].split('-');return MESL[+m-1]+' '+y};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const pct=x=>Math.round(x*100)+'%';
+const skSc=s=>skScore(s.b,s.p,s.e);
 const fobjTxt=f=>{const d=new Date(f+'T12:00:00');const v=d<new Date();return `Objetivo ${d.toLocaleDateString('es-AR')}${v?' · vencido':''}`};
 const TURNOS=['Todos','Mañana','Tarde','Noche','Intermedio'];
 const VIEWS=[['resumen','Resumen'],['dotacion','Dotación'],['tempos','Tempos'],['movimientos','Movimientos'],['matriz','Matriz'],['tareas','Capacidad por tarea'],['skap','SKAP'],['plan','Plan de acción'],['revision','Revisión']];
-const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',plSec:'Todos',skAll:false,plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
+const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',skCh:'Todos',plSec:'Todos',skAll:false,plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
 S.admin=!!window.IS_ADMIN;
 try{const v=localStorage.getItem('mx_turno');if(v&&TURNOS.includes(v))S.t=v}catch(e){}
 
@@ -685,20 +712,32 @@ function vTareas(){
 function vSkap(){
   // SKAP: solo personal adentro en el mes elegido (efectivos y tempos activos); las bajas y los tempos afuera no cuentan
   const adentro=s=>s.l&&byL[s.l]&&isIn(st(byL[s.l],S.m));
+  const fd=d=>{const [y,m,dd]=d.split('-');return `${dd}/${m}/${y.slice(2)}`};
   const base=DATA.skap.filter(s=>turnoOk(s.t)&&(S.skSec==='Todos'||s.se===S.skSec));
   const fuera=base.filter(s=>!adentro(s));
-  let sk=base.filter(s=>S.skAll||adentro(s)).map(s=>({...s,sc:((s.b||0)*5+(s.p||0)*3+(s.e||0)*2)/10})).sort((a,b)=>b.sc-a.sc);
-  const avg=k=>sk.length?sk.reduce((a,s)=>a+(s[k]||0),0)/sk.length:0;
-  const tur=['Mañana','Tarde','Noche'].map(t=>{const a=DATA.skap.filter(s=>s.t===t&&(S.skSec==='Todos'||s.se===S.skSec)&&(S.skAll||adentro(s)));return [t,a.length?a.reduce((x,s)=>x+((s.b||0)*5+(s.p||0)*3+(s.e||0)*2)/10,0)/a.length:0]});
-  const bar=v=>`<span class="meter gold" style="display:block;width:100%;min-width:60px"><i style="width:${(v||0)*100}%"></i></span>`;
-  return head('SKAP','Puntaje SKAP = básico × 50% + proactivo × 30% + empoderamiento × 20%.')+
+  const todos=base.filter(s=>S.skAll||adentro(s)).map(s=>{const sc=skSc(s);const h=(DATA.skHist||{})[s.l+'|'+s.se]||[];
+    const ini=h.length?skScore(h[0][1],h[0][2],h[0][3]):sc;const d=Math.round(sc*100)-Math.round(ini*100);
+    const ult=h.length>1?h[h.length-1][0]:null;return {...s,sc,ini,d,h,ult}});
+  const nM=todos.filter(s=>s.d>0).length,nE=todos.filter(s=>s.d<0).length;
+  const sk=todos.filter(s=>S.skCh==='Todos'||(S.skCh==='mejor'&&s.d>0)||(S.skCh==='peor'&&s.d<0)||(S.skCh==='igual'&&s.d===0)).sort((a,b)=>b.sc-a.sc||b.d-a.d);
+  const avg=(k,L=todos)=>L.length?L.reduce((a,s)=>a+(s[k]||0),0)/L.length:0;
+  const tur=['Mañana','Tarde','Noche'].map(t=>{const a=DATA.skap.filter(s=>s.t===t&&(S.skSec==='Todos'||s.se===S.skSec)&&(S.skAll||adentro(s)));return [t,a.length?a.reduce((x,s)=>x+skSc(s),0)/a.length:0]});
+  const col=v=>v>=.95?'var(--ok)':v>=.8?'var(--gold)':'var(--bad)';
+  const ring=v=>{v=v||0;const r=14,C=2*Math.PI*r;return `<span class="ring" title="${pct(v)}"><svg viewBox="0 0 36 36" width="40" height="40" aria-label="${pct(v)}"><circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--na)" stroke-width="3.5"/><circle cx="18" cy="18" r="${r}" fill="none" stroke="${col(v)}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(v*C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 18 18)"/><text x="18" y="21.5" text-anchor="middle" class="ring-t">${Math.round(v*100)}</text></svg></span>`};
+  const histT=s=>s.h.length>1?s.h.map(x=>`${fd(x[0])}: ${pct(skScore(x[1],x[2],x[3]))}`).join(' → '):'Sin cambios registrados';
+  const delta=s=>s.d>0?`<span class="delta up" title="${histT(s)}">▲ +${s.d}</span>`:s.d<0?`<span class="delta down" title="${histT(s)}">▼ ${s.d}</span>`:`<span class="delta eq" title="${histT(s)}">= 0</span>`;
+  const big=(t,v)=>`<div class="skbig"><div class="ring-l"><svg viewBox="0 0 36 36" width="84" height="84"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--na)" stroke-width="3"/><circle cx="18" cy="18" r="15" fill="none" stroke="${col(v)}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${(v*2*Math.PI*15).toFixed(1)} ${(2*Math.PI*15).toFixed(1)}" transform="rotate(-90 18 18)"/><text x="18" y="21" text-anchor="middle" class="ring-t big">${Math.round(v*100)}%</text></svg></div><span>${t}</span></div>`;
+  return head('SKAP','Puntaje SKAP = básico × 50% + proactivo × 30% + empoderamiento × 20%. Cada vez que cargás los Excel de SKAP, los cambios quedan registrados.')+
   `<div class="row" style="margin-bottom:12px"><div class="chips" id="skSec">${['Todos','AE','Picking'].map(k=>`<button class="chip" data-k="${k}" aria-pressed="${S.skSec===k}">${k==='AE'?'Autoelevadores':k}</button>`).join('')}</div><span class="spacer"></span>${fuera.length?`<button class="chip" id="skAll" aria-pressed="${S.skAll}">${S.skAll?'Ocultar':'Mostrar'} ${fuera.length} que ya no están (bajas y tempos afuera)</button>`:''}</div>
-  <div class="kpis">${kpi('SKAP promedio',pct(avg('sc')),`${sk.length} personas`,'hero')}${kpi('Básico · Proact. · Empod.',`${pct(avg('b'))}`,`proactivo ${pct(avg('p'))} · empoderamiento ${pct(avg('e'))}`)}</div>
-  <div class="grid2"><div class="card"><h3>Por persona</h3><div class="tblwrap"><table><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th>Básico</th><th>Proactivo</th><th>Empoder.</th><th>SKAP</th></tr></thead><tbody>
-  ${sk.map(s=>`<tr class="click" data-f="${s.l}"><td>${esc(s.n)}${S.skAll&&!adentro(s)?' <span class="pill p-bad">No está</span>':''}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td>${bar(s.b)}</td><td>${bar(s.p)}</td><td>${bar(s.e)}</td><td class="num"><span class="pill p-mut">${pct(s.sc)}</span></td></tr>`).join('')||`<tr><td colspan="7" class="empty">Sin evaluaciones para este filtro.</td></tr>`}
-  </tbody></table></div></div>
-  <div class="card"><h3>SKAP por turno</h3>${hbars(tur.map(([t,v])=>[t,Math.round(v*100)]),100,v=>v+'%')}
-  <h3 style="margin-top:18px">Por habilidad</h3>${hbars([['Básico',Math.round(avg('b')*100)],['Proactivo',Math.round(avg('p')*100)],['Empoderamiento',Math.round(avg('e')*100)]],100,v=>v+'%')}</div></div>`;
+  <div class="kpis">${kpi('SKAP promedio',pct(avg('sc')),`${todos.length} personas`,'hero')}${kpi('Mejoraron',`<span style="color:var(--ok)">${nM}</span>`,'subieron su SKAP')}${kpi('Empeoraron',`<span style="color:var(--bad)">${nE}</span>`,'bajaron su SKAP')}${kpi('Sin cambios',todos.length-nM-nE,'mismo puntaje')}</div>
+  <div class="grid2 even" style="margin-bottom:12px"><div class="card"><h3>SKAP por turno</h3><div class="skbigs">${tur.map(([t,v])=>big(t,v)).join('')}</div></div>
+  <div class="card"><h3>Por habilidad</h3><div class="skbigs">${big('Básico',avg('b'))}${big('Proactivo',avg('p'))}${big('Empoderamiento',avg('e'))}</div></div></div>
+  <div class="card"><h3>Por persona <small>${sk.length} personas</small></h3>
+  <div class="chips" id="skCh" style="display:inline-flex;margin-bottom:10px">${[['Todos','Todos'],['mejor','▲ Mejoraron'],['peor','▼ Empeoraron'],['igual','Sin cambios']].map(([k,n])=>`<button class="chip" data-k="${k}" aria-pressed="${S.skCh===k}">${n}</button>`).join('')}</div>
+  <div class="tblwrap" style="max-height:680px"><table class="sktbl"><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th class="ctr">Básico</th><th class="ctr">Proactivo</th><th class="ctr">Empoder.</th><th class="ctr">SKAP</th><th class="ctr">+/−</th><th class="ctr">SKAP hoy</th></tr></thead><tbody>
+  ${sk.map(s=>`<tr class="click" data-f="${s.l}"><td>${esc(s.n)}${S.skAll&&!adentro(s)?' <span class="pill p-bad">No está</span>':''}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td class="ctr">${ring(s.b)}</td><td class="ctr">${ring(s.p)}</td><td class="ctr">${ring(s.e)}</td><td class="ctr num"><span class="pill p-mut">${pct(s.ini)}</span></td><td class="ctr">${delta(s)}${s.ult?`<div class="muted" style="font-size:11px;margin-top:2px">${fd(s.ult)}</div>`:''}</td><td class="ctr num"><span class="skhoy" style="--c:${col(s.sc)}">${pct(s.sc)}</span></td></tr>`).join('')||`<tr><td colspan="9" class="empty">Sin evaluaciones para este filtro.</td></tr>`}
+  </tbody></table></div>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">SKAP = puntaje desde que se empezó a registrar · +/− = cuánto subió o bajó (debajo, la fecha del último cambio; pasá el mouse para ver todo el historial) · SKAP hoy = puntaje con los últimos Excel cargados. Aros: verde 95% o más, amarillo 80–94%, rojo menos de 80%.</p></div>`;
 }
 function vPlan(){
   const skp=l=>{const k=skByL[l];return k?((k.b||0)*5+(k.p||0)*3+(k.e||0)*2)/10:null};
@@ -728,7 +767,7 @@ function vPlan(){
 function bindView(){
   const chipset=(id,key)=>{const el=document.getElementById(id);if(el)el.onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;S[key]=b.dataset.k;render()}};
   chipset('dotF','dotF');
-  document.querySelectorAll('[data-dk]').forEach(b=>b.onclick=()=>{S.dotF=S.dotF===b.dataset.dk&&b.dataset.dk!=='activa'?'activa':b.dataset.dk;render();const t=document.querySelector('.grid2 .card');if(t&&innerWidth<860)t.scrollIntoView({behavior:'smooth',block:'start'})});chipset('tempoF','tempoF');chipset('movF','movF');chipset('sortMx','sortMx');chipset('skSec','skSec');{const b=document.getElementById('skAll');if(b)b.onclick=()=>{S.skAll=!S.skAll;render()}}chipset('plSec','plSec');chipset('plE','plE');
+  document.querySelectorAll('[data-dk]').forEach(b=>b.onclick=()=>{S.dotF=S.dotF===b.dataset.dk&&b.dataset.dk!=='activa'?'activa':b.dataset.dk;render();const t=document.querySelector('.grid2 .card');if(t&&innerWidth<860)t.scrollIntoView({behavior:'smooth',block:'start'})});chipset('tempoF','tempoF');chipset('movF','movF');chipset('sortMx','sortMx');chipset('skSec','skSec');chipset('skCh','skCh');{const b=document.getElementById('skAll');if(b)b.onclick=()=>{S.skAll=!S.skAll;render()}}chipset('plSec','plSec');chipset('plE','plE');
   document.querySelectorAll('[data-pp]').forEach(b=>b.onclick=()=>{S.plP=b.dataset.pp||null;render()});
   document.querySelectorAll('[data-ph]').forEach(b=>b.onclick=()=>{S.plH=b.dataset.ph||null;render()});
   const oi=document.getElementById('onlyIn');if(oi)oi.onchange=e=>{S.onlyIn=e.target.checked;render()};
@@ -754,6 +793,9 @@ function openFicha(l){
   root.innerHTML=`<div class="scrim" id="scrim"></div><aside class="ficha" role="dialog" aria-modal="true" aria-label="Ficha de ${esc(p.n)}"><button class="close" id="xf">Cerrar</button>
   <div><p class="sec-t" style="margin:0">Legajo ${esc(p.l)} · ${esc(p.t)}</p><h2>${esc(p.n)}</h2><div class="row" style="margin-top:6px">${est}${p.ta?`<span class="muted">${esc(p.ta)}</span>`:''}</div>${p.aj?`<div class="aj" style="font-size:13px;margin-top:6px">✎ Ajuste manual: ${esc(ajText(p.aj))}</div>`:''}${S.admin?`<button class="btn" style="margin-top:8px" data-aj="${p.l}">${p.aj?'Editar ajuste':'Agregar ajuste'}</button>`:''}</div>
   <div class="facts"><div class="fact"><div class="lbl">Antigüedad</div><div class="v num">${antig(p,S.m)??'—'}${antig(p,S.m)!=null?' años':''}</div></div><div class="fact"><div class="lbl">Matriz</div><div class="v num">${mx?mx.s.filter(x=>x===0).length+'/20':'—'}</div></div><div class="fact"><div class="lbl">SKAP</div><div class="v num">${sc!=null?pct(sc):'—'}</div></div></div>
+  ${(()=>{const hs=Object.entries(DATA.skHist||{}).filter(([k,h])=>k.split('|')[0]===l&&h.length>1);if(!hs.length)return '';
+    const fd=d=>{const [y,m,dd]=d.split('-');return `${dd}/${m}/${y.slice(2)}`};
+    return `<div><p class="sec-t">Historial SKAP</p>${hs.map(([k,h])=>`<div class="row" style="gap:6px;flex-wrap:wrap">${hs.length>1?`<span class="muted">${esc(k.split('|')[1])}:</span>`:''}${h.map((x,i)=>{const v=skScore(x[1],x[2],x[3]),pv=i?skScore(h[i-1][1],h[i-1][2],h[i-1][3]):null,d=pv==null?0:Math.round(v*100)-Math.round(pv*100);return `<span class="pill ${d>0?'p-ok':d<0?'p-bad':'p-mut'}">${fd(x[0])} · ${pct(v)}${d?` (${d>0?'+':''}${d})`:''}</span>`}).join('')}</div>`).join('')}</div>`})()}
   <div><p class="sec-t">Historial de dotación · ${ml(0)} a ${ml(DATA.months.length-1)}</p>${strip(p,0,true)}
   <div class="legend"><span><i style="background:var(--ok)"></i>Efectivo</span><span><i style="background:var(--gold)"></i>Tempo adentro</span><span><i style="background:var(--bad)"></i>Tempo afuera</span><span><i style="background:var(--na)"></i>No figura</span></div>
   ${evs.length?`<div class="row" style="margin-top:8px">${evs.map(e=>`<span class="pill ${EVL[e.k][1]}">${EVL[e.k][0]} · ${ml(e.i)}</span>`).join('')}</div>`:''}</div>
