@@ -467,12 +467,19 @@ const AJT={traslado:'Cambio de sector',efect:'Efectivizado',baja:'Baja confirmad
 const ajText=a=>a.k==='traslado'?`Pasó a ${a.area||'otra área'}.${a.d?' '+a.d:''}`:(a.d||'');
 // La dotación sale siempre igual al Excel: ya no hay ajustes que sumen personas que no figuran.
 let AJ=(window.SRC_AJ||AJ_DEF).filter(a=>a.k!=='activo').map(a=>({...a}));
+const ULT=DATA.months[DATA.months.length-1];
+// Bajas confirmadas que el archivo de dotación todavía no refleja
+[['SILVA','ALDO','GABRIEL'],['VENTOS','MATIAS'],['OTERO','JESSICA']].forEach(tk=>{
+  const c=P.filter(p=>{const w=norm(p.n).split(' ');return tk.every(t=>w.includes(t))});
+  if(c.length!==1||AJ.some(a=>a.l===c[0].l))return;
+  AJ.push({l:c[0].l,k:'baja',m:ULT,d:'No vuelve. Todavía figura en el archivo de dotación.'});});
 function saveAJ(){window.onAjChange&&window.onAjChange(AJ);if(window.SRC_INFO)window.SRC_INFO.pendiente=true;setEstado()}
 let AJL={},EV=[];
 function applyAJ(){
   AJL=Object.fromEntries(AJ.map(a=>[a.l,a]));
   P.forEach(p=>{p.h=p.h0.slice();p.ta=p.ta0;p.aj=null;p.fill=null});
   AJ.forEach(a=>{const p=byL[a.l];if(!p)return;p.aj=a;if(a.ta)p.ta=a.ta;
+    if(a.k==='baja'&&a.m){const i0=DATA.months.findIndex(x=>x>=a.m);if(i0>=0)for(let i=i0;i<p.h.length;i++)p.h[i]='';}
     if(a.k==='activo'){let last=-1;p.h.forEach((c,i)=>{if(c)last=i});p.fill=[];for(let i=last+1;i<p.h.length;i++){p.h[i]='EA';p.fill.push(i)}}});
   EV=[];
   for(let i=1;i<DATA.months.length;i++)for(const p of P){const a=st(p,i-1),b=st(p,i);
@@ -609,7 +616,7 @@ function vTempos(){
   `<div class="kpis">${kpi('Tempos afuera',af.length,'suspendidos este mes','hero')}${kpi('Tempos adentro',ad.length,'trabajando este mes')}${kpi('Efectivizados',ef.length,'pasaron a efectivo')}${kpi('6+ meses afuera',af.filter(r=>r.ra>=6).length,'para revisar')}</div>
   <div class="card"><div class="row" style="margin-bottom:10px"><div class="chips" id="tempoF">${chips.map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${S.tempoF===k}">${l}</button>`).join('')}</div></div>
   <div class="scroll"><table><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Estado</th><th>Racha actual</th><th>Meses adentro</th><th>Meses afuera</th><th>Historial (${ml(0)} a ${ml(S.m)})</th></tr></thead><tbody>
-  ${F.map(r=>`<tr class="click" data-f="${r.p.l}"><td>${esc(r.p.n)}</td><td>${esc(r.p.t)}</td><td>${r.c==='TS'?'<span class="pill p-bad">Afuera</span>':r.c==='TA'?'<span class="pill p-gold">Adentro</span>':r.c==='EA'?'<span class="pill p-ok">Efectivo</span>':'<span class="pill p-mut">No figura</span>'}</td><td>${al(r.ra)}</td><td class="num">${r.act}</td><td class="num">${r.sus}</td><td>${strip({h:r.p.h.slice(0,S.m+1)})}</td></tr>`).join('')||`<tr><td colspan="7" class="empty">No hay tempos para este filtro.</td></tr>`}
+  ${F.map(r=>`<tr class="click" data-f="${r.p.l}"><td>${esc(r.p.n)}${r.p.aj?`<div class="aj">✎ ${esc(AJT[r.p.aj.k]+(ajText(r.p.aj)?' · '+ajText(r.p.aj):''))}</div>`:''}</td><td>${esc(r.p.t)}</td><td>${r.c==='TS'?'<span class="pill p-bad">Afuera</span>':r.c==='TA'?'<span class="pill p-gold">Adentro</span>':r.c==='EA'?'<span class="pill p-ok">Efectivo</span>':'<span class="pill p-mut">No figura</span>'}</td><td>${al(r.ra)}</td><td class="num">${r.act}</td><td class="num">${r.sus}</td><td>${strip({h:r.p.h.slice(0,S.m+1)})}</td></tr>`).join('')||`<tr><td colspan="7" class="empty">No hay tempos para este filtro.</td></tr>`}
   </tbody></table></div></div>`;
 }
 function vMov(){
@@ -774,7 +781,7 @@ function openAJ(l){
    <label for="aj_d">Detalle</label><textarea id="aj_d" class="sel" rows="3" placeholder="Opcional">${esc(a.d||'')}</textarea>
    <div class="row"><button type="submit" class="btn solid">Guardar</button>${AJL[l]?'<button type="button" class="btn" id="aj_del" style="border-color:var(--bad);color:var(--bad)">Quitar ajuste</button>':''}</div>
   </form></aside>`;
-  const help={traslado:'Deja de contar como baja. Queda registrado como cambio de sector.',efect:'Un tempo que dejó de figurar queda como efectivizado en vez de “tempo salió”.',activo:'Sigue contando en el personal adentro aunque no figure en el archivo de dotación.',baja:'Confirma que dejó la empresa.',nota:'Solo agrega una aclaración en su ficha. Podés cambiar cómo se muestra su tarea o sector.'};
+  const help={traslado:'Deja de contar como baja. Queda registrado como cambio de sector.',efect:'Un tempo que dejó de figurar queda como efectivizado en vez de “tempo salió”.',activo:'Sigue contando en el personal adentro aunque no figure en el archivo de dotación.',baja:'Confirma que dejó la empresa: deja de contar desde este mes y pasa a “Ya no figuran”, aunque el archivo de dotación todavía no lo haya sacado.',nota:'Solo agrega una aclaración en su ficha. Podés cambiar cómo se muestra su tarea o sector.'};
   const upd=()=>{const k=$('#aj_k').value;$('#aj_help').textContent=help[k];$('#aj_area_w').hidden=k!=='traslado';$('#aj_ta_w').hidden=k!=='nota'};
   $('#aj_k').onchange=upd;upd();
   const close=()=>{root.innerHTML=''};
@@ -782,7 +789,7 @@ function openAJ(l){
   if($('#aj_del'))$('#aj_del').onclick=()=>{AJ=AJ.filter(x=>x.l!==l);saveAJ();applyAJ();close();render();toast('Ajuste quitado.')};
   $('#ajf').onsubmit=e=>{e.preventDefault();let L=l;
     if(!p){const v=norm($('#aj_p').value);const q=P.find(x=>norm(x.n)===v)||P.find(x=>norm(x.n).includes(v));if(!q){toast('No encontré a esa persona en la dotación. Elegila de la lista.');return}L=q.l}
-    const k=$('#aj_k').value;const n={l:L,k,d:$('#aj_d').value.trim()};if(k==='traslado')n.area=$('#aj_area').value.trim();if(k==='nota'&&$('#aj_ta').value.trim())n.ta=$('#aj_ta').value.trim();
+    const k=$('#aj_k').value;const n={l:L,k,d:$('#aj_d').value.trim()};if(k==='traslado')n.area=$('#aj_area').value.trim();if(k==='nota'&&$('#aj_ta').value.trim())n.ta=$('#aj_ta').value.trim();if(k==='baja')n.m=(AJL[L]&&AJL[L].k==='baja'&&AJL[L].m)||ULT;
     AJ=AJ.filter(x=>x.l!==L);AJ.push(n);saveAJ();applyAJ();close();render();toast('Ajuste guardado. Los números ya están recalculados.')};
   (p?$('#aj_k'):$('#aj_p')).focus();
 }
