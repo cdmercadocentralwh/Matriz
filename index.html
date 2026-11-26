@@ -140,6 +140,11 @@ svg text.ring-t.big{font-size:8.5px}
 .delta{display:inline-block;font-weight:700;font-size:13px;padding:3px 9px;border-radius:99px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .delta.up{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
 .delta.down{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.evo{display:flex;flex-wrap:wrap;align-items:center;gap:3px}
+.evo-p{font-weight:700;font-size:12px;padding:2px 7px;border-radius:99px;border:1.5px solid var(--c);font-variant-numeric:tabular-nums}
+.evo-a{color:var(--muted);font-size:12px}
+.fcb{border:1px solid var(--line);background:transparent;color:inherit;padding:6px 10px;border-radius:99px;font-size:13px;cursor:pointer;text-align:left}
+.fcb[aria-pressed="true"]{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 18%,transparent);font-weight:600}
 .delta.eq{background:var(--na);color:var(--na-fg)}
 .skhoy{display:inline-block;min-width:54px;font-family:var(--display);font-weight:700;font-size:18px;padding:3px 10px;border-radius:8px;border:2px solid var(--c);color:var(--fg)}
 .skbigs{display:flex;justify-content:space-around;gap:10px;flex-wrap:wrap}
@@ -458,9 +463,17 @@ const mlong=i=>{const [y,m]=DATA.months[i].split('-');return MESL[+m-1]+' '+y};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const pct=x=>Math.round(x*100)+'%';
 const skSc=s=>skScore(s.b,s.p,s.e);
+// Grupo foco: lista de legajos guardada en la configuración (se publica con los datos)
+const FOCO_DEF=['GUZMAN ROQUE FRANCISCO','ACOSTA JUAN ALBERTO','PALAVECINO RODOLFO ABELINO','HERRERA WALTER AMERICO','LOPEZ RAMON JORGE','CAMPOS HUMBERTO DANIEL','ALARCON RAMON MARTIN','GONZALEZ LOPEZ CARLOS ALBERTO','PALLARES PEDRO ORLANDO','RESQUIN MARIO ALBERTO','MUNOZ HECTOR IGNACIO','NUNEZ JUAN FRANCISCO','MELIAN LUCIANO BENJAMIN','GAMARRA JAVIER NESTO','ARAYA DANIEL ABEL'];
+function focoSet(){
+  if(Array.isArray(CFG.foco))return new Set(CFG.foco);
+  const L=new Set();FOCO_DEF.forEach(def=>{const tk=def.split(' ');const c=[...new Map(DATA.skap.filter(s=>s.l&&s.n).map(s=>[s.l,s])).values()].filter(s=>{const w=norm(s.n).split(' ');return tk.every(t=>w.some(x=>x.startsWith(t)))&&w[0]===tk[0]});if(c.length===1)L.add(c[0].l)});
+  return L;
+}
+function saveFoco(L){CFG.foco=[...L];window.onAjChange&&window.onAjChange(AJ);if(window.onFocoChange)window.onFocoChange(CFG.foco);if(window.SRC_INFO)window.SRC_INFO.pendiente=true;setEstado()}
 const fobjTxt=f=>{const d=new Date(f+'T12:00:00');const v=d<new Date();return `Objetivo ${d.toLocaleDateString('es-AR')}${v?' · vencido':''}`};
 const TURNOS=['Todos','Mañana','Tarde','Noche','Intermedio'];
-const VIEWS=[['resumen','Resumen'],['dotacion','Dotación'],['tempos','Tempos'],['movimientos','Movimientos'],['matriz','Matriz'],['tareas','Capacidad por tarea'],['skap','SKAP'],['plan','Plan de acción'],['revision','Revisión']];
+const VIEWS=[['resumen','Resumen'],['dotacion','Dotación'],['tempos','Tempos'],['movimientos','Movimientos'],['matriz','Matriz 2x2 3x3'],['tareas','Capacidad por tarea'],['skap','SKAP'],['plan','Plan de acción'],['revision','Revisión']];
 const S={admin:false,m:DATA.months.length-1,t:'Todos',view:'resumen',onlyIn:true,task:null,skSec:'Todos',skCh:'Todos',plSec:'Todos',skAll:false,plP:null,plH:null,plE:'NOK',sortMx:'cob',tempoF:'afuera',movF:'todos',dotF:'activa'};
 S.admin=!!window.IS_ADMIN;
 try{const v=localStorage.getItem('mx_turno');if(v&&TURNOS.includes(v))S.t=v}catch(e){}
@@ -659,6 +672,12 @@ function vMov(){
   ${ev.map(e=>{const prev=st(e.p,e.i-1);return `<tr class="click" data-f="${e.p.l}"><td class="num">${mlong(e.i)}</td><td>${esc(e.p.n)}</td><td>${esc(e.p.t)}</td><td><span class="pill ${EVL[e.k][1]}">${EVL[e.k][0]}</span></td><td class="muted">${e.p.aj&&e.k!=='ingreso'?`<span class="aj">✎ ${esc(ajText(e.p.aj))}</span>`:e.k==='baja'||e.k==='fin'?'Figuró por última vez en '+mlong(e.i-1)+(prev==='TS'?' (afuera)':''):''}</td></tr>`}).join('')||`<tr><td colspan="5" class="empty">Sin movimientos para este filtro.</td></tr>`}
   </tbody></table></div></div>`;
 }
+function focoCard(){
+  const FS=focoSet();const L=[...new Map(DATA.skap.filter(s=>s.l).map(s=>[s.l,s])).values()].sort((a,b)=>(FS.has(b.l)-FS.has(a.l))||a.n.localeCompare(b.n));
+  return `<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Grupo foco <small id="fcN">${FS.size} personas</small></h3><span class="spacer"></span><input id="fcQ" type="search" placeholder="Buscar persona…" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;min-width:180px"></div>
+  <p class="muted" style="font-size:12px;margin:0 0 8px">Tocá una persona para sumarla o sacarla del grupo foco. Aparecen en SKAP → ★ Grupo foco. Se publica junto con los datos.</p>
+  <div class="tchips" id="fcL" style="max-height:320px;overflow:auto">${L.map(s=>`<button class="fcb" data-fc="${s.l}" data-q="${esc(norm(s.n))}" aria-pressed="${FS.has(s.l)}">${FS.has(s.l)?'★':'☆'} ${esc(s.n)} <span class="muted">· ${esc(s.t)} · ${s.se}</span></button>`).join('')}</div></div>`;
+}
 function vRevision(){
   const inSinMx=P.filter(p=>isIn(st(p,S.m))&&turnoOk(p.t)&&!mxByL[p.l]).sort((a,b)=>a.n.localeCompare(b.n));
   const mxFuera=DATA.matriz.filter(m=>m.l&&!isIn(st(byL[m.l],S.m))&&turnoOk(m.t));
@@ -677,6 +696,7 @@ function vRevision(){
   <div class="card" style="margin-top:12px"><h3>Corregido automáticamente <small>no hace falta tocar nada</small></h3>
   <details><summary>${ren.length} nombres unificados con la dotación</summary>${tbl(['En la Matriz','Nombre oficial (dotación)'],ren.map(m=>`<tr class="click" data-f="${m.l}"><td class="muted">${esc(m.orig)}</td><td>${esc(m.n)}</td></tr>`))}</details>
   <p class="muted" style="margin:10px 0 0">${FIX.dup} ${FIX.dup===1?'persona cargada dos veces quedó':'personas cargadas dos veces quedaron'} en una sola fila${FIX.dupN.length?` (${FIX.dupN.map(esc).join(", ")})`:""}. ${mxFuera.length} personas de la Matriz que ya no están adentro se ocultan.</p></div>
+  ${focoCard()}
   <div style="margin-top:12px">
   <div class="card"><h3>Última carga</h3>${(DATA.meta.warn||[]).length?`<div class="alerts">${DATA.meta.warn.map(w=>`<div class="alert"><span class="dot" style="background:var(--warn)"></span><span class="muted">${esc(w)}</span></div>`).join('')}</div>`:'<p class="muted">Todos los archivos se leyeron sin problemas.</p>'}
   <p class="muted" style="font-size:13px">Dotación: ${DATA.months.length} meses · Matriz: ${DATA.matriz.length} personas · SKAP: ${DATA.skap.length} · Plan de acción: ${DATA.ae.length}</p>
@@ -719,13 +739,22 @@ function vSkap(){
     const ini=h.length?skScore(h[0][1],h[0][2],h[0][3]):sc;const d=Math.round(sc*100)-Math.round(ini*100);
     const ult=h.length>1?h[h.length-1][0]:null;return {...s,sc,ini,d,h,ult}});
   const nM=todos.filter(s=>s.d>0).length,nE=todos.filter(s=>s.d<0).length;
-  const sk=todos.filter(s=>S.skCh==='Todos'||(S.skCh==='mejor'&&s.d>0)||(S.skCh==='peor'&&s.d<0)||(S.skCh==='igual'&&s.d===0)).sort((a,b)=>b.sc-a.sc||b.d-a.d);
+  const FS=focoSet();const isF=S.skCh==='foco';
+  const sk=todos.filter(s=>S.skCh==='Todos'||(S.skCh==='mejor'&&s.d>0)||(S.skCh==='peor'&&s.d<0)||(S.skCh==='igual'&&s.d===0)||(isF&&FS.has(s.l))).sort((a,b)=>b.sc-a.sc||b.d-a.d);
   const avg=(k,L=todos)=>L.length?L.reduce((a,s)=>a+(s[k]||0),0)/L.length:0;
   const tur=['Mañana','Tarde','Noche'].map(t=>{const a=DATA.skap.filter(s=>s.t===t&&(S.skSec==='Todos'||s.se===S.skSec)&&(S.skAll||adentro(s)));return [t,a.length?a.reduce((x,s)=>x+skSc(s),0)/a.length:0]});
   const col=v=>v>=.95?'var(--ok)':v>=.8?'var(--gold)':'var(--bad)';
   const ring=v=>{v=v||0;const r=14,C=2*Math.PI*r;return `<span class="ring" title="${pct(v)}"><svg viewBox="0 0 36 36" width="40" height="40" aria-label="${pct(v)}"><circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--na)" stroke-width="3.5"/><circle cx="18" cy="18" r="${r}" fill="none" stroke="${col(v)}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(v*C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 18 18)"/><text x="18" y="21.5" text-anchor="middle" class="ring-t">${Math.round(v*100)}</text></svg></span>`};
   const histT=s=>s.h.length>1?s.h.map(x=>`${fd(x[0])}: ${pct(skScore(x[1],x[2],x[3]))}`).join(' → '):'Sin cambios registrados';
   const delta=s=>s.d>0?`<span class="delta up" title="${histT(s)}">▲ +${s.d}</span>`:s.d<0?`<span class="delta down" title="${histT(s)}">▼ ${s.d}</span>`:`<span class="delta eq" title="${histT(s)}">= 0</span>`;
+  const evo=s=>{const pts=s.h.length?s.h.map(x=>[x[0],skScore(x[1],x[2],x[3])]):[[null,s.ini]];if(Math.round(pts[pts.length-1][1]*100)!==Math.round(s.sc*100))pts.push([null,s.sc]);
+    return `<div class="evo">${pts.map((x,k)=>`${k?'<span class="evo-a">→</span>':''}<span class="evo-p" style="--c:${col(x[1])}" title="${x[0]?fd(x[0]):'Hoy'}">${pct(x[1])}</span>`).join('')}</div>`};
+  const aeBy={};DATA.ae.forEach(a=>{aeBy[a.l]=a});
+  const focoBox=()=>{if(!isF)return '';const fp=sk;if(!fp.length)return `<p class="muted">No hay personas del grupo foco con este filtro${S.admin?'. Elegilas en Revisión → Grupo foco.':'.'}</p>`;
+    const i=avg('ini',fp),h=avg('sc',fp),d=Math.round(h*100)-Math.round(i*100);const mj=fp.filter(s=>s.d>0).length;
+    const nk={};fp.forEach(s=>{const a=aeBy[s.l];if(a)a.nok.forEach(([hb,it])=>{const k=hb+'|'+it;nk[k]=(nk[k]||0)+1})});const NK=Object.entries(nk).sort((a,b)=>b[1]-a[1]);
+    return `<div class="kpis" style="margin-bottom:10px">${kpi('Grupo foco',fp.length,'personas','hero')}${kpi('SKAP al inicio',pct(i),'promedio del grupo')}${kpi('SKAP hoy',`<span style="color:${col(h)}">${pct(h)}</span>`,d>0?`▲ +${d} puntos`:d<0?`▼ ${d} puntos`:'sin cambios')}${kpi('Mejoraron',mj,`de ${fp.length}`)}</div>
+    ${NK.length?`<details style="margin-bottom:10px"><summary>Entrenamientos pendientes del grupo <small class="muted">(${NK.reduce((a,x)=>a+x[1],0)})</small></summary><div class="tblwrap" style="max-height:300px"><table><thead><tr><th>Habilidad</th><th>Entrenamiento NOK</th><th class="ctr">Personas</th></tr></thead><tbody>${NK.map(([k,n])=>{const [hb,it]=k.split('|');return `<tr><td class="muted">${esc(hb)}</td><td>${esc(it)}</td><td class="ctr num">${n}</td></tr>`}).join('')}</tbody></table></div></details>`:''}`};
   const big=(t,v)=>`<div class="skbig"><div class="ring-l"><svg viewBox="0 0 36 36" width="84" height="84"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--na)" stroke-width="3"/><circle cx="18" cy="18" r="15" fill="none" stroke="${col(v)}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${(v*2*Math.PI*15).toFixed(1)} ${(2*Math.PI*15).toFixed(1)}" transform="rotate(-90 18 18)"/><text x="18" y="21" text-anchor="middle" class="ring-t big">${Math.round(v*100)}%</text></svg></div><span>${t}</span></div>`;
   return head('SKAP','Puntaje SKAP = básico × 50% + proactivo × 30% + empoderamiento × 20%. Cada vez que cargás los Excel de SKAP, los cambios quedan registrados.')+
   `<div class="row" style="margin-bottom:12px"><div class="chips" id="skSec">${['Todos','AE','Picking'].map(k=>`<button class="chip" data-k="${k}" aria-pressed="${S.skSec===k}">${k==='AE'?'Autoelevadores':k}</button>`).join('')}</div><span class="spacer"></span>${fuera.length?`<button class="chip" id="skAll" aria-pressed="${S.skAll}">${S.skAll?'Ocultar':'Mostrar'} ${fuera.length} que ya no están (bajas y tempos afuera)</button>`:''}</div>
@@ -733,11 +762,13 @@ function vSkap(){
   <div class="grid2 even" style="margin-bottom:12px"><div class="card"><h3>SKAP por turno</h3><div class="skbigs">${tur.map(([t,v])=>big(t,v)).join('')}</div></div>
   <div class="card"><h3>Por habilidad</h3><div class="skbigs">${big('Básico',avg('b'))}${big('Proactivo',avg('p'))}${big('Empoderamiento',avg('e'))}</div></div></div>
   <div class="card"><h3>Por persona <small>${sk.length} personas</small></h3>
-  <div class="chips" id="skCh" style="display:inline-flex;margin-bottom:10px">${[['Todos','Todos'],['mejor','▲ Mejoraron'],['peor','▼ Empeoraron'],['igual','Sin cambios']].map(([k,n])=>`<button class="chip" data-k="${k}" aria-pressed="${S.skCh===k}">${n}</button>`).join('')}</div>
-  <div class="tblwrap" style="max-height:680px"><table class="sktbl"><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th class="ctr">Básico</th><th class="ctr">Proactivo</th><th class="ctr">Empoder.</th><th class="ctr">SKAP</th><th class="ctr">+/−</th><th class="ctr">SKAP hoy</th></tr></thead><tbody>
-  ${sk.map(s=>`<tr class="click" data-f="${s.l}"><td>${esc(s.n)}${S.skAll&&!adentro(s)?' <span class="pill p-bad">No está</span>':''}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td class="ctr">${ring(s.b)}</td><td class="ctr">${ring(s.p)}</td><td class="ctr">${ring(s.e)}</td><td class="ctr num"><span class="pill p-mut">${pct(s.ini)}</span></td><td class="ctr">${delta(s)}${s.ult?`<div class="muted" style="font-size:11px;margin-top:2px">${fd(s.ult)}</div>`:''}</td><td class="ctr num"><span class="skhoy" style="--c:${col(s.sc)}">${pct(s.sc)}</span></td></tr>`).join('')||`<tr><td colspan="9" class="empty">Sin evaluaciones para este filtro.</td></tr>`}
+  <div class="chips" id="skCh" style="display:inline-flex;margin-bottom:10px">${[['Todos','Todos'],['mejor','▲ Mejoraron'],['peor','▼ Empeoraron'],['igual','Sin cambios'],['foco','★ Grupo foco']].map(([k,n])=>`<button class="chip" data-k="${k}" aria-pressed="${S.skCh===k}">${n}</button>`).join('')}</div>
+  ${focoBox()}${isF?`<div class="tblwrap" style="max-height:680px"><table class="sktbl"><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th>Evolución SKAP</th><th class="ctr">+/−</th><th class="ctr">Pendientes</th><th class="ctr">SKAP hoy</th></tr></thead><tbody>
+  ${sk.map(s=>{const a=aeBy[s.l];const n=a?a.nok.length:null;return `<tr class="click" data-f="${s.l}"><td>${esc(s.n)}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td>${evo(s)}</td><td class="ctr">${delta(s)}</td><td class="ctr">${n==null?'<span class="muted">—</span>':n?`<button class="pill p-bad num" data-goplan="${s.l}" title="Ver en Plan de acción">${n}</button>`:'<span class="pill p-ok">Al día</span>'}</td><td class="ctr num"><span class="skhoy" style="--c:${col(s.sc)}">${pct(s.sc)}</span></td></tr>`}).join('')||''}
+  </tbody></table></div>`:''}<div class="tblwrap" style="max-height:680px${isF?';display:none':''}"><table class="sktbl"><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th class="ctr">Básico</th><th class="ctr">Proactivo</th><th class="ctr">Empoder.</th><th class="ctr">SKAP</th><th class="ctr">+/−</th><th class="ctr">SKAP hoy</th></tr></thead><tbody>
+  ${sk.map(s=>`<tr class="click" data-f="${s.l}"><td>${esc(s.n)}${S.skAll&&!adentro(s)?' <span class="pill p-bad">No está</span>':''}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td class="ctr">${ring(s.b)}</td><td class="ctr">${ring(s.p)}</td><td class="ctr">${ring(s.e)}</td><td class="ctr num"><span class="pill p-mut">${pct(s.ini)}</span></td><td class="ctr">${delta(s)}</td><td class="ctr num"><span class="skhoy" style="--c:${col(s.sc)}">${pct(s.sc)}</span></td></tr>`).join('')||`<tr><td colspan="9" class="empty">Sin evaluaciones para este filtro.</td></tr>`}
   </tbody></table></div>
-  <p class="muted" style="font-size:12px;margin:8px 0 0">SKAP = puntaje desde que se empezó a registrar · +/− = cuánto subió o bajó (debajo, la fecha del último cambio; pasá el mouse para ver todo el historial) · SKAP hoy = puntaje con los últimos Excel cargados. Aros: verde 95% o más, amarillo 80–94%, rojo menos de 80%.</p></div>`;
+  <p class="muted" style="font-size:12px;margin:8px 0 0">SKAP = puntaje desde que se empezó a registrar · +/− = cuánto subió o bajó (pasá el mouse para ver todo el historial con fechas) · SKAP hoy = puntaje con los últimos Excel cargados. Aros: verde 95% o más, amarillo 80–94%, rojo menos de 80%.</p></div>`;
 }
 function vPlan(){
   const skp=l=>{const k=skByL[l];return k?((k.b||0)*5+(k.p||0)*3+(k.e||0)*2)/10:null};
@@ -774,6 +805,9 @@ function bindView(){
   document.querySelectorAll('[data-task]').forEach(b=>b.onclick=()=>{const k=+b.dataset.task;S.task=S.task===k?null:k;render()});
   const cp=document.getElementById('copyAJ');if(cp)cp.onclick=()=>{const tsv=['Legajo\tApellido y nombre\tTipo\tÁrea\tTarea/Sector\tDetalle',...AJ.map(a=>[a.l,(byL[a.l]||{}).n||'',AJT[a.k],a.area||'',a.ta||'',a.d||''].join('\t'))].join('\n');navigator.clipboard.writeText(tsv).then(()=>toast('Copiado. Pegalo en una hoja “Ajustes” de tu Excel.')).catch(()=>toast('No se pudo copiar desde este navegador.'))};
   const bo=document.getElementById('borrar');if(bo)bo.onclick=()=>{if(bo.dataset.ok){try{localStorage.removeItem('mx_work')}catch(_){}location.reload()}else{bo.dataset.ok='1';bo.textContent='Tocá de nuevo para confirmar'}};
+  const fl=document.getElementById('fcL');if(fl){const FS=focoSet();
+    fl.onclick=e=>{const b=e.target.closest('[data-fc]');if(!b)return;const l=b.dataset.fc;const on=!FS.has(l);on?FS.add(l):FS.delete(l);b.setAttribute('aria-pressed',on);b.firstChild.textContent=(on?'★':'☆')+' '+b.firstChild.textContent.slice(2);saveFoco(FS);document.getElementById('fcN').textContent=FS.size+' personas';toast(on?'Sumado al grupo foco.':'Quitado del grupo foco.')};
+    const q=document.getElementById('fcQ');q.oninput=()=>{const v=norm(q.value);fl.querySelectorAll('[data-fc]').forEach(b=>b.style.display=!v||b.dataset.q.includes(v)?'':'none')}}
   const ct=document.getElementById('clrTask');if(ct)ct.onclick=()=>{S.task=null;render()};
 }
 
@@ -875,6 +909,7 @@ function setWork(cambios){
   if(!guardar('mx_work',WORK))aviso('Este navegador no deja guardar los cambios. Publicalos antes de cerrar.');
 }
 window.onAjChange=aj=>{setWork({aj});};
+window.onFocoChange=foco=>{setWork({cfg:Object.assign({},CFG,(WORK&&WORK.cfg)||{},{foco})})};
 window.onCfgChange=cfg=>{setWork({cfg:Object.assign({},CFG,cfg)});location.reload()};
 
 /* ===== Pantallas sin tablero ===== */
