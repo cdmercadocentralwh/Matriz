@@ -470,6 +470,14 @@ function focoSet(){
   const L=new Set();FOCO_DEF.forEach(def=>{const tk=def.split(' ');const c=[...new Map(DATA.skap.filter(s=>s.l&&s.n).map(s=>[s.l,s])).values()].filter(s=>{const w=norm(s.n).split(' ');return tk.every(t=>w.some(x=>x.startsWith(t)))&&w[0]===tk[0]});if(c.length===1)L.add(c[0].l)});
   return L;
 }
+// Comparación SKAP reiniciada: la persona toma su puntaje actual como punto de partida (queda "sin cambios")
+const BASE_DEF=['SALAS ADRIAN'];
+function baseSet(){
+  if(Array.isArray(CFG.skBase))return new Set(CFG.skBase);
+  const L=new Set();BASE_DEF.forEach(def=>{const tk=def.split(' ');DATA.skap.filter(s=>s.l&&s.n).forEach(s=>{const w=norm(s.n).split(' ');if(w[0]===tk[0]&&tk.every(t=>w.some(x=>x.startsWith(t))))L.add(s.l+'|'+s.se)})});
+  return L;
+}
+function saveBase(L){CFG.skBase=[...L];if(window.onFocoChange)window.onFocoChange(CFG.foco);if(window.SRC_INFO)window.SRC_INFO.pendiente=true;setEstado()}
 function saveFoco(L){CFG.foco=[...L];window.onAjChange&&window.onAjChange(AJ);if(window.onFocoChange)window.onFocoChange(CFG.foco);if(window.SRC_INFO)window.SRC_INFO.pendiente=true;setEstado()}
 const fobjTxt=f=>{const d=new Date(f+'T12:00:00');const v=d<new Date();return `Objetivo ${d.toLocaleDateString('es-AR')}${v?' · vencido':''}`};
 const TURNOS=['Todos','Mañana','Tarde','Noche','Intermedio'];
@@ -672,6 +680,14 @@ function vMov(){
   ${ev.map(e=>{const prev=st(e.p,e.i-1);return `<tr class="click" data-f="${e.p.l}"><td class="num">${mlong(e.i)}</td><td>${esc(e.p.n)}</td><td>${esc(e.p.t)}</td><td><span class="pill ${EVL[e.k][1]}">${EVL[e.k][0]}</span></td><td class="muted">${e.p.aj&&e.k!=='ingreso'?`<span class="aj">✎ ${esc(ajText(e.p.aj))}</span>`:e.k==='baja'||e.k==='fin'?'Figuró por última vez en '+mlong(e.i-1)+(prev==='TS'?' (afuera)':''):''}</td></tr>`}).join('')||`<tr><td colspan="5" class="empty">Sin movimientos para este filtro.</td></tr>`}
   </tbody></table></div></div>`;
 }
+function baseCard(){
+  const BS=baseSet();const L=DATA.skap.filter(s=>s.l).map(s=>{const k=s.l+'|'+s.se;const h=(DATA.skHist||{})[k]||[];const ini=h.length?skScore(h[0][1],h[0][2],h[0][3]):skSc(s);return {...s,k,d:Math.round(skSc(s)*100)-Math.round(ini*100)}}).filter(s=>s.d!==0||BS.has(s.k)).sort((a,b)=>(BS.has(b.k)-BS.has(a.k))||a.d-b.d||a.n.localeCompare(b.n));
+  return `<div class="card" style="margin-top:12px"><h3>Comparación SKAP <small>${BS.size} reiniciadas</small></h3>
+  <p class="muted" style="font-size:12px;margin:0 0 8px">“Dejar sin cambios” toma el SKAP de hoy como punto de partida de esa persona: deja de figurar como que subió o bajó. Los puntajes de básico, proactivo y empoderamiento no cambian. “Volver” recupera la comparación.</p>
+  <div class="tblwrap" style="max-height:320px"><table><thead><tr><th>Apellido y nombre</th><th>Turno</th><th>Sector</th><th class="ctr">+/−</th><th class="ctr">SKAP hoy</th><th></th></tr></thead><tbody>
+  ${L.map(s=>{const on=BS.has(s.k);return `<tr><td>${esc(s.n)}</td><td>${esc(s.t)}</td><td class="muted">${s.se}</td><td class="ctr">${on?'<span class="pill p-mut">= 0</span>':s.d>0?`<span class="pill p-ok">▲ +${s.d}</span>`:`<span class="pill p-bad">▼ ${s.d}</span>`}</td><td class="ctr num">${pct(skSc(s))}</td><td class="ctr"><button class="btn" data-sb="${esc(s.k)}">${on?'Volver':'Dejar sin cambios'}</button></td></tr>`}).join('')||'<tr><td colspan="6" class="empty">Nadie subió ni bajó.</td></tr>'}
+  </tbody></table></div></div>`;
+}
 function focoCard(){
   const FS=focoSet();const L=[...new Map(DATA.skap.filter(s=>s.l).map(s=>[s.l,s])).values()].sort((a,b)=>(FS.has(b.l)-FS.has(a.l))||a.n.localeCompare(b.n));
   return `<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Grupo foco <small id="fcN">${FS.size} personas</small></h3><span class="spacer"></span><input id="fcQ" type="search" placeholder="Buscar persona…" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;min-width:180px"></div>
@@ -697,6 +713,7 @@ function vRevision(){
   <details><summary>${ren.length} nombres unificados con la dotación</summary>${tbl(['En la Matriz','Nombre oficial (dotación)'],ren.map(m=>`<tr class="click" data-f="${m.l}"><td class="muted">${esc(m.orig)}</td><td>${esc(m.n)}</td></tr>`))}</details>
   <p class="muted" style="margin:10px 0 0">${FIX.dup} ${FIX.dup===1?'persona cargada dos veces quedó':'personas cargadas dos veces quedaron'} en una sola fila${FIX.dupN.length?` (${FIX.dupN.map(esc).join(", ")})`:""}. ${mxFuera.length} personas de la Matriz que ya no están adentro se ocultan.</p></div>
   ${focoCard()}
+  ${baseCard()}
   <div style="margin-top:12px">
   <div class="card"><h3>Última carga</h3>${(DATA.meta.warn||[]).length?`<div class="alerts">${DATA.meta.warn.map(w=>`<div class="alert"><span class="dot" style="background:var(--warn)"></span><span class="muted">${esc(w)}</span></div>`).join('')}</div>`:'<p class="muted">Todos los archivos se leyeron sin problemas.</p>'}
   <p class="muted" style="font-size:13px">Dotación: ${DATA.months.length} meses · Matriz: ${DATA.matriz.length} personas · SKAP: ${DATA.skap.length} · Plan de acción: ${DATA.ae.length}</p>
@@ -735,7 +752,8 @@ function vSkap(){
   const fd=d=>{const [y,m,dd]=d.split('-');return `${dd}/${m}/${y.slice(2)}`};
   const base=DATA.skap.filter(s=>turnoOk(s.t)&&(S.skSec==='Todos'||s.se===S.skSec));
   const fuera=base.filter(s=>!adentro(s));
-  const todos=base.filter(s=>S.skAll||adentro(s)).map(s=>{const sc=skSc(s);const h=(DATA.skHist||{})[s.l+'|'+s.se]||[];
+  const BS=baseSet();
+  const todos=base.filter(s=>S.skAll||adentro(s)).map(s=>{const sc=skSc(s);const h=BS.has(s.l+'|'+s.se)?[]:((DATA.skHist||{})[s.l+'|'+s.se]||[]);
     const ini=h.length?skScore(h[0][1],h[0][2],h[0][3]):sc;const d=Math.round(sc*100)-Math.round(ini*100);
     const ult=h.length>1?h[h.length-1][0]:null;return {...s,sc,ini,d,h,ult}});
   const nM=todos.filter(s=>s.d>0).length,nE=todos.filter(s=>s.d<0).length;
@@ -808,6 +826,7 @@ function bindView(){
   const fl=document.getElementById('fcL');if(fl){const FS=focoSet();
     fl.onclick=e=>{const b=e.target.closest('[data-fc]');if(!b)return;const l=b.dataset.fc;const on=!FS.has(l);on?FS.add(l):FS.delete(l);b.setAttribute('aria-pressed',on);b.firstChild.textContent=(on?'★':'☆')+' '+b.firstChild.textContent.slice(2);saveFoco(FS);document.getElementById('fcN').textContent=FS.size+' personas';toast(on?'Sumado al grupo foco.':'Quitado del grupo foco.')};
     const q=document.getElementById('fcQ');q.oninput=()=>{const v=norm(q.value);fl.querySelectorAll('[data-fc]').forEach(b=>b.style.display=!v||b.dataset.q.includes(v)?'':'none')}}
+  document.querySelectorAll('[data-sb]').forEach(b=>b.onclick=()=>{const BS=baseSet();const k=b.dataset.sb;BS.has(k)?BS.delete(k):BS.add(k);saveBase(BS);render();toast(BS.has(k)?'Queda sin cambios.':'Comparación recuperada.')});
   const ct=document.getElementById('clrTask');if(ct)ct.onclick=()=>{S.task=null;render()};
 }
 
@@ -909,7 +928,7 @@ function setWork(cambios){
   if(!guardar('mx_work',WORK))aviso('Este navegador no deja guardar los cambios. Publicalos antes de cerrar.');
 }
 window.onAjChange=aj=>{setWork({aj});};
-window.onFocoChange=foco=>{setWork({cfg:Object.assign({},CFG,(WORK&&WORK.cfg)||{},{foco})})};
+window.onFocoChange=()=>{setWork({cfg:Object.assign({},(WORK&&WORK.cfg)||{},CFG)})};
 window.onCfgChange=cfg=>{setWork({cfg:Object.assign({},CFG,cfg)});location.reload()};
 
 /* ===== Pantallas sin tablero ===== */
