@@ -753,12 +753,13 @@ function vSkap(){
   const base=DATA.skap.filter(s=>turnoOk(s.t)&&(S.skSec==='Todos'||s.se===S.skSec));
   const fuera=base.filter(s=>!adentro(s));
   const BS=baseSet();
-  const todos=base.filter(s=>S.skAll||adentro(s)).map(s=>{const sc=skSc(s);const h=BS.has(s.l+'|'+s.se)?[]:((DATA.skHist||{})[s.l+'|'+s.se]||[]);
+  const mk=s=>{const sc=skSc(s);const h=BS.has(s.l+'|'+s.se)?[]:((DATA.skHist||{})[s.l+'|'+s.se]||[]);
     const ini=h.length?skScore(h[0][1],h[0][2],h[0][3]):sc;const d=Math.round(sc*100)-Math.round(ini*100);
-    const ult=h.length>1?h[h.length-1][0]:null;return {...s,sc,ini,d,h,ult}});
+    const ult=h.length>1?h[h.length-1][0]:null;return {...s,sc,ini,d,h,ult}};
+  const todos=base.filter(s=>S.skAll||adentro(s)).map(mk);
   const nM=todos.filter(s=>s.d>0).length,nE=todos.filter(s=>s.d<0).length;
   const FS=focoSet();const isF=S.skCh==='foco';
-  const sk=todos.filter(s=>S.skCh==='Todos'||(S.skCh==='mejor'&&s.d>0)||(S.skCh==='peor'&&s.d<0)||(S.skCh==='igual'&&s.d===0)||(isF&&FS.has(s.l))).sort((a,b)=>b.sc-a.sc||b.d-a.d);
+  const sk=(isF?DATA.skap.filter(s=>FS.has(s.l)&&(S.skAll||adentro(s))).map(mk):todos.filter(s=>S.skCh==='Todos'||(S.skCh==='mejor'&&s.d>0)||(S.skCh==='peor'&&s.d<0)||(S.skCh==='igual'&&s.d===0))).sort((a,b)=>b.sc-a.sc||b.d-a.d);
   const avg=(k,L=todos)=>L.length?L.reduce((a,s)=>a+(s[k]||0),0)/L.length:0;
   const tur=['Mañana','Tarde','Noche'].map(t=>{const a=DATA.skap.filter(s=>s.t===t&&(S.skSec==='Todos'||s.se===S.skSec)&&(S.skAll||adentro(s)));return [t,a.length?a.reduce((x,s)=>x+skSc(s),0)/a.length:0]});
   const col=v=>v>=.95?'var(--ok)':v>=.8?'var(--gold)':'var(--bad)';
@@ -768,7 +769,7 @@ function vSkap(){
   const evo=s=>{const pts=s.h.length?s.h.map(x=>[x[0],skScore(x[1],x[2],x[3])]):[[null,s.ini]];if(Math.round(pts[pts.length-1][1]*100)!==Math.round(s.sc*100))pts.push([null,s.sc]);
     return `<div class="evo">${pts.map((x,k)=>`${k?'<span class="evo-a">→</span>':''}<span class="evo-p" style="--c:${col(x[1])}" title="${x[0]?x[0].slice(0,4):'Hoy'}">${pct(x[1])}</span>`).join('')}</div>`};
   const aeBy={};DATA.ae.forEach(a=>{aeBy[a.l]=a});
-  const focoBox=()=>{if(!isF)return '';const fp=sk;if(!fp.length)return `<p class="muted">No hay personas del grupo foco con este filtro${S.admin?'. Elegilas en Revisión → Grupo foco.':'.'}</p>`;
+  const focoBox=()=>{if(!isF)return '';const fp=sk;if(!fp.length)return `<p class="muted">${FS.size?`Las ${FS.size} personas del grupo foco no figuran activas en la dotación del mes elegido.`:'Todavía no hay personas en el grupo foco.'}${S.admin?' Revisalas en Revisión → Grupo foco.':''}</p>`;
     const i=avg('ini',fp),h=avg('sc',fp),d=Math.round(h*100)-Math.round(i*100);const mj=fp.filter(s=>s.d>0).length;
     const nk={};fp.forEach(s=>{const a=aeBy[s.l];if(a)a.nok.forEach(([hb,it])=>{const k=hb+'|'+it;nk[k]=(nk[k]||0)+1})});const NK=Object.entries(nk).sort((a,b)=>b[1]-a[1]);
     return `<div class="kpis" style="margin-bottom:10px">${kpi('Grupo foco',fp.length,'personas','hero')}${kpi('SKAP al inicio',pct(i),'promedio del grupo')}${kpi('SKAP hoy',`<span style="color:${col(h)}">${pct(h)}</span>`,d>0?`▲ +${d} puntos`:d<0?`▼ ${d} puntos`:'sin cambios')}${kpi('Mejoraron',mj,`de ${fp.length}`)}</div>
@@ -912,6 +913,7 @@ let PUB=null,ENV=null,WORK=leer('mx_work'),IS_ADMIN=false,BOOTED=false;
 const CFG={fobj:'2026-09-21'};
 const REPO=(()=>{const h=location.hostname,m=h.match(/^([^.]+)\.github\.io$/i);const seg=location.pathname.split('/').filter(Boolean)[0];return m&&seg?{owner:m[1],repo:seg}:null})();
 function fuente(){ // qué datos mostrar
+  if(WORK&&PUB&&PUB.publicado&&!(WORK.at>Date.parse(PUB.publicado))){WORK=null;borrar('mx_work')} // hay una publicación más nueva que la copia local
   if(IS_ADMIN&&WORK&&WORK.raw)return WORK;
   if(PUB)return PUB;
   if(IS_ADMIN&&WORK)return WORK;
@@ -924,7 +926,7 @@ function arrancar(){
   BOOTED=true;boot(buildData(src.raw,CFG));
 }
 function setWork(cambios){
-  WORK=Object.assign({},WORK||{raw:PUB&&PUB.raw,aj:PUB&&PUB.aj,cfg:PUB&&PUB.cfg},cambios,{dirty:true});
+  WORK=Object.assign({},WORK||{raw:PUB&&PUB.raw,aj:PUB&&PUB.aj,cfg:PUB&&PUB.cfg},cambios,{dirty:true,at:Date.now()});
   if(!guardar('mx_work',WORK))aviso('Este navegador no deja guardar los cambios. Publicalos antes de cerrar.');
 }
 window.onAjChange=aj=>{setWork({aj});};
